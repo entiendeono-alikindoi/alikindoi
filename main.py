@@ -6,14 +6,23 @@ from typing import Optional
 
 app = FastAPI(
     title="API de Tenders Públicos - España",
-    description="API profesional para consulta y filtrado de licitaciones públicas en tiempo real con datos oficiales.",
-    version="1.1.0"
+    description="API comercial de consulta y filtrado de licitaciones públicas (PLACSP) con atribución y limitación de responsabilidad.",
+    version="1.2.0"
 )
 
 OFFICIAL_FEED_URL = "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom"
-LEGAL_NOTICE = "Datos obtenidos de fuentes abiertas institucionales (PLACSP) conforme al derecho de información y reutilización de información del sector público."
 
-# Sistema de Claves de API (API Keys autorizadas para clientes)
+# Aviso legal riguroso adaptado a la Ley 37/2007 de Reutilización y exención de responsabilidad
+LEGAL_NOTICE = (
+    "AVISO LEGAL Y LIMITACIÓN DE RESPONSABILIDAD: Datos obtenidos de fuentes abiertas "
+    "institucionales (Plataforma de Contratación del Sector Público - PLACSP) al amparo de la "
+    "Ley 37/2007 sobre reutilización de la información del sector público. El proveedor de esta API "
+    "actúa como mero agregador tecnológico y de índice, no otorga derechos de propiedad intelectual, "
+    "no garantiza la inalterabilidad o exactitud de los datos originales, y queda totalmente exento de "
+    "responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales "
+    "o tareas de mantenimiento de la fuente original (contrataciondelestado.es)."
+)
+
 VALID_API_KEYS = {
     "demo_key_123": "Cliente Demo",
     "cliente_premium_001": "Empresa Suscrita A",
@@ -22,7 +31,6 @@ VALID_API_KEYS = {
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 def verify_api_key(api_key: str = Depends(api_key_header)):
-    """Verifica que el cliente envíe una clave de API válida."""
     if not api_key or api_key not in VALID_API_KEYS:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -31,7 +39,6 @@ def verify_api_key(api_key: str = Depends(api_key_header)):
     return api_key
 
 def fetch_real_tenders():
-    """Descarga y procesa las licitaciones reales del portal oficial."""
     tenders = []
     try:
         req = urllib.request.Request(
@@ -78,7 +85,19 @@ def inicio():
     return {
         "estado": "API Activa",
         "mensaje": "Bienvenido a la API de Licitaciones Públicas de España",
-        "documentacion": "/docs"
+        "aviso_legal": LEGAL_NOTICE,
+        "documentacion": "/docs",
+        "terminos_legales": "/legal"
+    }
+
+@app.get("/legal", tags=["Legal y Términos"])
+def obtener_aviso_legal():
+    """Endpoint obligatorio para auditorías y aceptación de términos de servicio por parte de los clientes."""
+    return {
+        "condiciones_servicio": "El uso de esta API implica la aceptación de los términos de reutilización de datos abiertos.",
+        "fuente_oficial": "https://contrataciondelestado.es",
+        "aviso_legal_completo": LEGAL_NOTICE,
+        "exencion_responsabilidad": "El prestador del servicio no asume daños por la indisponibilidad temporal del feed de la PLACSP."
     }
 
 @app.get("/tenders", tags=["Licitaciones"])
