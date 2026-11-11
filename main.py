@@ -10,12 +10,12 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.6.0",
+    version="3.7.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión v3.6.0
+# Estructuras de datos para la versión v3.7.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -89,7 +89,7 @@ async def health_check():
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "3.6.0",
+        "version": "3.7.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
         "webhooks_registered": len(REGISTERED_WEBHOOKS),
@@ -131,6 +131,42 @@ async def register_webhook(payload: dict):
         "status": "success",
         "webhook_id": hook_id,
         "message": "Webhook registrado correctamente para futuras alertas de licitaciones."
+    }
+
+@app.get("/analytics/summary", dependencies=[Depends(verify_api_key)])
+async def analytics_summary():
+    """Devuelve métricas agregadas de licitaciones (total, por estado y por órgano)."""
+    global CACHE_STORAGE
+    now = time.time()
+    if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
+        tenders_data = [
+            {
+                "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
+                "objeto": f"Licitación con analíticas v3.7 número {i}",
+                "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
+                "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
+                "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
+            } for i in range(1, 40)
+        ]
+        CACHE_STORAGE["data"] = tenders_data
+        CACHE_STORAGE["timestamp"] = now
+
+    tenders = CACHE_STORAGE["data"]
+    states_count = {}
+    orgs_count = {}
+    for t in tenders:
+        s = t["estado"]
+        o = t["organo_contratacion"]
+        states_count[s] = states_count.get(s, 0) + 1
+        orgs_count[o] = orgs_count.get(o, 0) + 1
+
+    return {
+        "status": "success",
+        "version": "3.7.0",
+        "total_tenders": len(tenders),
+        "by_state": states_count,
+        "by_organ": orgs_count,
+        "legal_notice": "Datos procesados bajo el amparo de la Ley 37/2007."
     }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -221,11 +257,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control y Webhooks SaaS</h3>
+                            <h3 class="fw-bold m-0">Panel de Control y Analíticas v3.7</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.6.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.7.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -240,8 +276,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Notificaciones</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Webhooks Activos</h4>
+                                <span class="text-muted small">Analíticas Globales</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Endpoint /analytics</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -278,7 +314,6 @@ async def home_dashboard():
                     <!-- Webhooks Management Card -->
                     <div class="card-custom mb-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-bell me-2"></i>Registro de Webhooks</h5>
-                        <p class="text-muted small">Añade endpoints externos para recibir notificaciones automáticas:</p>
                         <div class="input-group mb-3" style="max-width: 600px;">
                             <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook-endpoint">
                             <button onclick="registerWebhook()" class="btn btn-outline-primary">Registrar Webhook</button>
@@ -419,9 +454,9 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con soporte de webhooks v3.6 número {i}",
+                "objeto": f"Licitación con analíticas globales v3.7 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
-                "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
+                "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
             } for i in range(1, 40)
         ]
@@ -445,7 +480,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "3.6.0",
+        "version": "3.7.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
