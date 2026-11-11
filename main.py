@@ -1,16 +1,27 @@
-from fastapi import FastAPI, Query, Depends, HTTPException, status
+from fastapi import FastAPI, Query, Depends, HTTPException, status, Request
 from fastapi.security import APIKeyHeader
 import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Optional
 import os
 import time
+import logging
 from collections import defaultdict
+
+# ---------------------------------------------------------------------------
+# CONFIGURACIÓN DE LOGS Y TRAZABILIDAD (AUDIT TRAIL)
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] AUDIT: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("TenderAPI")
 
 app = FastAPI(
     title="API de Tenders Públicos - España (Production Grade)",
-    description="API comercial segura de licitaciones públicas con rate limiting estricto, trazabilidad y exención de responsabilidad.",
-    version="2.1.0"
+    description="API comercial segura de licitaciones públicas con rate limiting, trazabilidad y exención de responsabilidad.",
+    version="2.2.0"
 )
 
 OFFICIAL_FEED_URL = "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom"
@@ -53,17 +64,18 @@ api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 # RATE LIMITING DEFENSIVO (Estricto: 20 peticiones por minuto)
 # ---------------------------------------------------------------------------
 REQUEST_WINDOW = 60  # segundos
-MAX_REQUESTS_PER_WINDOW = 20  # Límite comercial seguro
+MAX_REQUESTS_PER_WINDOW = 20
 request_counts = defaultdict(list)
 
-def verificar_rate_limit(api_key: str):
+def verificar_rate_limit(api_key: str, cliente_nombre: str, endpoint: str):
     ahora = time.time()
     peticiones_cliente = request_counts[api_key]
     
-    # Filtrar peticiones dentro de la ventana de los últimos 60 segundos
+    # Filtrar peticiones dentro de la ventana de 60 segundos
     peticions_validas = [t for t in peticiones_cliente if ahora - t < REQUEST_WINDOW]
     
     if len(peticions_validas) >= MAX_REQUESTS_PER_WINDOW:
+        logger.warning(f"BLOQUEO RATE LIMIT | Cliente: '{cliente_nombre}' | Endpoint: {endpoint}")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Límite de peticiones excedido (Rate Limit). Máximo 20 peticiones por minuto."
@@ -72,13 +84,22 @@ def verificar_rate_limit(api_key: str):
     peticions_validas.append(ahora)
     request_counts[api_key] = peticions_validas
 
-def verify_api_key(api_key: str = Depends(api_key_header)):
+def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
+    client_ip = request.client.host if request.client else "Desconocida"
+    path = request.url.path
+    
     if not api_key or api_key not in VALID_API_KEYS:
+        logger.warning(f"ACCESO RECHAZADO | IP: {client_ip} | Clave invalida/ausente | Ruta: {path}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Clave de API inválida o no proporcionada. Incluya el encabezado 'X-API-KEY'."
         )
-    verificar_rate_limit(api_key)
+    
+    cliente_nombre = VALID_API_KEYS.get(api_key, "Desconocido")
+    verificar_rate_limit(api_key, cliente_nombre, path)
+    
+    # Registro oficial de auditoría
+    logger.info(f"ACCESO AUTORIZADO | Cliente: '{cliente_nombre}' | Ruta: {path} | IP: {client_ip}")
     return api_key
 
 # ---------------------------------------------------------------------------
@@ -113,7 +134,8 @@ def fetch_real_tenders():
                 "fecha_actualizacion": updated,
                 "enlace_oficial": link
             })
-    except Exception:
+    except Exception as e:
+        logger.error(f"FALLO FUENTE PLACSP | Error técnico: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="La fuente oficial de la PLACSP no se encuentra disponible temporalmente. Exención de responsabilidad aplicada."
@@ -127,7 +149,7 @@ def fetch_real_tenders():
 def inicio():
     return {
         "estado": "API Activa y Blindada",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "aviso_legal": LEGAL_NOTICE,
         "documentacion": "/docs",
         "terminos_legales": "/legal"
