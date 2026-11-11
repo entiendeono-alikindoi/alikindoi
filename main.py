@@ -10,18 +10,19 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.3.0",
+    version="3.4.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos avanzadas para v3.3.0
+# Estructuras de datos para la versión v3.4.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
-API_KEY_METRICS = {} # Conteo total de llamadas por clave para control comercial
+API_KEY_METRICS = {}
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
+START_TIME = time.time()
 
 # Claves maestras por defecto
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
@@ -61,7 +62,6 @@ def verify_api_key(x_api_key: str = Header(...)):
         client_history.append(now)
         REQUEST_COUNTS[x_api_key] = client_history
 
-    # Registrar métrica de uso acumulada por clave
     key_identifier = x_api_key[:6] + "..." if x_api_key not in MASTER_KEYS else "MASTER_KEY"
     API_KEY_METRICS[key_identifier] = API_KEY_METRICS.get(key_identifier, 0) + 1
 
@@ -83,6 +83,19 @@ async def custom_swagger_ui_html():
         title=app.title + " - Consola de Documentación",
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
     )
+
+@app.get("/health", include_in_schema=True)
+async def health_check():
+    """Endpoint público de control de salud y estado del sistema."""
+    uptime_seconds = int(time.time() - START_TIME)
+    return {
+        "status": "healthy",
+        "version": "3.4.0",
+        "uptime_seconds": uptime_seconds,
+        "cache_active": bool(CACHE_STORAGE["data"]),
+        "timestamp": datetime.now().isoformat(),
+        "legal_notice": "Servicio operando bajo la Ley 37/2007."
+    }
 
 @app.post("/request-key")
 async def request_api_key(payload: dict = None):
@@ -177,6 +190,7 @@ async def home_dashboard():
                     <ul class="nav flex-column">
                         <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i>Dashboard</a></li>
                         <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i>Swagger Consola</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i>Health Check</a></li>
                         <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Marco Legal</a></li>
                     </ul>
                 </div>
@@ -185,11 +199,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Métricas y Control SaaS</h3>
+                            <h3 class="fw-bold m-0">Panel de Control y Salud SaaS</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.3.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.4.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -198,14 +212,14 @@ async def home_dashboard():
                     <div class="row g-3 mb-4">
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Métricas v3.3</h4>
+                                <span class="text-muted small">Estado del Sistema</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-circle-check me-2"></i>Operativo</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Optimización</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Smart Caching</h4>
+                                <span class="text-muted small">Monitoreo</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Health Check Activo</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -334,7 +348,7 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con métricas integradas número {i}",
+                "objeto": f"Licitación con control de salud v3.4 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -353,7 +367,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "3.3.0",
+        "version": "3.4.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
