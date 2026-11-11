@@ -4,18 +4,18 @@ import time
 import requests
 from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.4.0",
+    version="3.5.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión v3.4.0
+# Estructuras de datos para la versión v3.5.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -24,7 +24,6 @@ CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
 START_TIME = time.time()
 
-# Claves maestras por defecto
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
 
 def verify_api_key(x_api_key: str = Header(...)):
@@ -86,11 +85,10 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud y estado del sistema."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "3.4.0",
+        "version": "3.5.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
         "timestamp": datetime.now().isoformat(),
@@ -199,11 +197,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control y Salud SaaS</h3>
+                            <h3 class="fw-bold m-0">Panel de Control y Analíticas SaaS</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.4.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.5.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -218,8 +216,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Monitoreo</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Health Check Activo</h4>
+                                <span class="text-muted small">Exportación</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">JSON / CSV Activo</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -338,6 +336,7 @@ async def legal_notice():
 async def get_tenders(
     request: Request, 
     estado: str = Query(None, description="Filtrar por estado"),
+    formato: str = Query("json", description="Formato de salida: json o csv"),
     limit: int = Query(10, ge=1, le=100, description="Límite por página"),
     offset: int = Query(0, ge=0, description="Desplazamiento para paginación")
 ):
@@ -348,7 +347,7 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con control de salud v3.4 número {i}",
+                "objeto": f"Licitación con soporte CSV v3.5 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -365,9 +364,17 @@ async def get_tenders(
 
     paginated_data = filtered_data[offset: offset + limit]
 
+    # Exportación en formato CSV si el usuario lo solicita
+    if formato.lower() == "csv":
+        csv_rows = ["id,objeto,organo_contratacion,estado,fecha_publicacion"]
+        for t in paginated_data:
+            csv_rows.append(f"{t['id']},\"{t['objeto']}\",\"{t['organo_contratacion']}\",{t['estado']},{t['fecha_publicacion']}")
+        csv_text = "\n".join(csv_rows)
+        return PlainTextResponse(content=csv_text, media_type="text/csv")
+
     return {
         "status": "success",
-        "version": "3.4.0",
+        "version": "3.5.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
