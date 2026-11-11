@@ -7,21 +7,22 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 
-API_VERSION = "4.4.0"
+API_VERSION = "4.5.0"
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
-    description="Infraestructura comercial de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007 con alta resiliencia, caché, control de tráfico y analíticas en tiempo real.",
+    description="Infraestructura comercial de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007 con alta resiliencia, caché, control de tráfico y analíticas avanzadas.",
     version=API_VERSION,
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.4.0
+# Estructuras de datos para la versión Enterprise v4.5.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
 API_KEY_METRICS = {}
+HOURLY_TRAFFIC = {}
 REGISTERED_WEBHOOKS = []
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
@@ -55,7 +56,7 @@ def fetch_real_placsp_tenders():
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Licitación Enterprise v4.4 (Conector Oficial) número {i}",
+            "objeto": f"Licitación Enterprise v4.5 (Conector Oficial) número {i}",
             "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
             "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
             "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -64,6 +65,10 @@ def fetch_real_placsp_tenders():
 
 def verify_api_key(x_api_key: str = Header(...)):
     now = time.time()
+    current_hour = datetime.now().strftime("%Y-%m-%d %H:00")
+    
+    # Registrar tráfico por hora global
+    HOURLY_TRAFFIC[current_hour] = HOURLY_TRAFFIC.get(current_hour, 0) + 1
     
     if x_api_key not in MASTER_KEYS and x_api_key not in DYNAMIC_API_KEYS:
         AUDIT_LOGS.insert(0, {
@@ -124,7 +129,7 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise con soporte de filtrado."""
+    """Endpoint público de control de salud Enterprise con métricas horarias."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
@@ -211,6 +216,7 @@ async def analytics_summary():
         "total_tenders": len(tenders),
         "by_state": states_count,
         "by_organ": orgs_count,
+        "hourly_traffic": HOURLY_TRAFFIC,
         "legal_notice": "Datos procesados bajo el amparo de la Ley 37/2007."
     }
 
@@ -243,14 +249,13 @@ async def search_tenders(
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
-    # Renderizamos todos los logs con atributos de datos para que JavaScript pueda filtrarlos en vivo
     logs_html = "".join([
         f"<tr data-severity='{log['severity']}'>"
         f"<td>{log['timestamp']}</td>"
         f"<td><code>{log['key_used']}</code></td>"
         f"<td><span class='badge bg-{'success' if log['severity']=='SUCCESS' else ('warning text-dark' if log['severity']=='WARNING' else 'danger')}'>{log['status']}</span></td>"
         f"</tr>" 
-        for log in AUDIT_LOGS[:30]
+        for log in AUDIT_LOGS[:25]
     ])
     if not logs_html:
         logs_html = "<tr id='noLogsRow'><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
@@ -258,6 +263,10 @@ async def home_dashboard():
     metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} peticiones</span></td></tr>" for k, v in API_KEY_METRICS.items()])
     if not metrics_html:
         metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo registrado todavía.</td></tr>"
+
+    traffic_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-secondary'>{v} reqs</span></td></tr>" for k, v in HOURLY_TRAFFIC.items()])
+    if not traffic_html:
+        traffic_html = "<tr><td colspan='2' class='text-muted text-center'>Sin tráfico horario registrado.</td></tr>"
 
     webhooks_html = "".join([f"<tr><td><code>{w['id']}</code></td><td><small class='text-light'>{w['url']}</small></td><td>{w['registered_at']}</td></tr>" for w in REGISTERED_WEBHOOKS])
     if not webhooks_html:
@@ -357,7 +366,7 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Filtros Pro</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Analíticas Pro</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -416,15 +425,15 @@ async def home_dashboard():
 
                     <!-- Metrics & Usage Summary Cards -->
                     <div class="row g-3 mb-4">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="card-custom h-100">
-                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Consumo Acumulado por Clave</h5>
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Consumo por Clave</h5>
                                 <div class="table-responsive">
                                     <table class="table table-dark table-striped table-sm align-middle">
                                         <thead>
                                             <tr>
-                                                <th>Identificador Clave</th>
-                                                <th>Peticiones Totales</th>
+                                                <th>Clave</th>
+                                                <th>Reqs</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -434,15 +443,32 @@ async def home_dashboard():
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <div class="card-custom h-100">
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-clock me-2"></i>Tráfico por Hora</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Franja</th>
+                                                <th>Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {traffic_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
                             <div class="card-custom h-100">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h5 class="fw-bold m-0"><i class="fa-solid fa-list-check me-2"></i>Auditoría y Filtros (v4.4)</h5>
-                                    <div class="btn-group btn-group-sm">
-                                        <button onclick="filterLogs('ALL')" class="btn btn-outline-light active">Todos</button>
-                                        <button onclick="filterLogs('SUCCESS')" class="btn btn-outline-success">Éxitos</button>
-                                        <button onclick="filterLogs('WARNING')" class="btn btn-outline-warning">Avisos</button>
-                                        <button onclick="filterLogs('DANGER')" class="btn btn-outline-danger">Críticos</button>
+                                    <h5 class="fw-bold m-0 fs-6"><i class="fa-solid fa-list-check me-1"></i>Auditoría</h5>
+                                    <div class="btn-group btn-group-sm" style="transform: scale(0.85);">
+                                        <button onclick="filterLogs('ALL')" class="btn btn-outline-light active">Todo</button>
+                                        <button onclick="filterLogs('SUCCESS')" class="btn btn-outline-success">OK</button>
+                                        <button onclick="filterLogs('DANGER')" class="btn btn-outline-danger">Err</button>
                                     </div>
                                 </div>
                                 <div class="table-responsive">
@@ -451,7 +477,7 @@ async def home_dashboard():
                                             <tr>
                                                 <th>Hora</th>
                                                 <th>Clave</th>
-                                                <th>Estado / Severidad</th>
+                                                <th>Estado</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -511,12 +537,10 @@ async def home_dashboard():
             }}
 
             function filterLogs(severity) {{
-                // Actualizar botones activos
                 const buttons = document.querySelectorAll('.btn-group button');
                 buttons.forEach(btn => btn.classList.remove('active'));
                 event.target.classList.add('active');
 
-                // Filtrar filas de la tabla
                 const rows = document.querySelectorAll('#auditTable tbody tr');
                 rows.forEach(row => {{
                     if (row.id === 'noLogsRow') return;
