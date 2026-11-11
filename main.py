@@ -7,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 
-API_VERSION = "4.5.0"
+API_VERSION = "5.0.0"
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
@@ -17,7 +17,7 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.5.0
+# Estructuras de datos para la versión Release Candidate v5.0.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -52,11 +52,11 @@ def fetch_real_placsp_tenders():
     except Exception:
         pass
 
-    # Fallback inteligente sintético garantizado para alta disponibilidad SaaS
+    # Fallback inteligente sintético garantizado para alta disponibilidad SaaS Enterprise
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Licitación Enterprise v4.5 (Conector Oficial) número {i}",
+            "objeto": f"Licitación Release Candidate v5.0 (Conector Oficial) número {i}",
             "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
             "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
             "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -67,7 +67,6 @@ def verify_api_key(x_api_key: str = Header(...)):
     now = time.time()
     current_hour = datetime.now().strftime("%Y-%m-%d %H:00")
     
-    # Registrar tráfico por hora global
     HOURLY_TRAFFIC[current_hour] = HOURLY_TRAFFIC.get(current_hour, 0) + 1
     
     if x_api_key not in MASTER_KEYS and x_api_key not in DYNAMIC_API_KEYS:
@@ -129,7 +128,7 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise con métricas horarias."""
+    """Endpoint público de control de salud Release Candidate Enterprise."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
@@ -366,7 +365,7 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Analíticas Pro</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Release Candidate</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
