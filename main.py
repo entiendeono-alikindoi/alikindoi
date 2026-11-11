@@ -7,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 
-API_VERSION = "4.3.0"
+API_VERSION = "4.4.0"
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
@@ -17,7 +17,7 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.3.0
+# Estructuras de datos para la versión Enterprise v4.4.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -55,7 +55,7 @@ def fetch_real_placsp_tenders():
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Licitación Enterprise v4.3 (Conector Oficial) número {i}",
+            "objeto": f"Licitación Enterprise v4.4 (Conector Oficial) número {i}",
             "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
             "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
             "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -109,7 +109,7 @@ def verify_api_key(x_api_key: str = Header(...)):
         "severity": "SUCCESS"
     })
     
-    if len(AUDIT_LOGS) > 75:
+    if len(AUDIT_LOGS) > 100:
         AUDIT_LOGS.pop()
 
     return x_api_key
@@ -124,7 +124,7 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise con traza de severidad."""
+    """Endpoint público de control de salud Enterprise con soporte de filtrado."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
@@ -243,9 +243,17 @@ async def search_tenders(
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
-    logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if log['severity']=='SUCCESS' else ('warning text-dark' if log['severity']=='WARNING' else 'danger')}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:15]])
+    # Renderizamos todos los logs con atributos de datos para que JavaScript pueda filtrarlos en vivo
+    logs_html = "".join([
+        f"<tr data-severity='{log['severity']}'>"
+        f"<td>{log['timestamp']}</td>"
+        f"<td><code>{log['key_used']}</code></td>"
+        f"<td><span class='badge bg-{'success' if log['severity']=='SUCCESS' else ('warning text-dark' if log['severity']=='WARNING' else 'danger')}'>{log['status']}</span></td>"
+        f"</tr>" 
+        for log in AUDIT_LOGS[:30]
+    ])
     if not logs_html:
-        logs_html = "<tr><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
+        logs_html = "<tr id='noLogsRow'><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
 
     metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} peticiones</span></td></tr>" for k, v in API_KEY_METRICS.items()])
     if not metrics_html:
@@ -349,7 +357,7 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Auditoría Pro</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Filtros Pro</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -428,9 +436,17 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-6">
                             <div class="card-custom h-100">
-                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría de Seguridad y Eventos (v4.3)</h5>
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 class="fw-bold m-0"><i class="fa-solid fa-list-check me-2"></i>Auditoría y Filtros (v4.4)</h5>
+                                    <div class="btn-group btn-group-sm">
+                                        <button onclick="filterLogs('ALL')" class="btn btn-outline-light active">Todos</button>
+                                        <button onclick="filterLogs('SUCCESS')" class="btn btn-outline-success">Éxitos</button>
+                                        <button onclick="filterLogs('WARNING')" class="btn btn-outline-warning">Avisos</button>
+                                        <button onclick="filterLogs('DANGER')" class="btn btn-outline-danger">Críticos</button>
+                                    </div>
+                                </div>
                                 <div class="table-responsive">
-                                    <table class="table table-dark table-striped table-sm align-middle">
+                                    <table class="table table-dark table-striped table-sm align-middle" id="auditTable">
                                         <thead>
                                             <tr>
                                                 <th>Hora</th>
@@ -492,6 +508,25 @@ async def home_dashboard():
                 }} catch (e) {{
                     alert('Error de red al registrar el webhook.');
                 }}
+            }}
+
+            function filterLogs(severity) {{
+                // Actualizar botones activos
+                const buttons = document.querySelectorAll('.btn-group button');
+                buttons.forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+
+                // Filtrar filas de la tabla
+                const rows = document.querySelectorAll('#auditTable tbody tr');
+                rows.forEach(row => {{
+                    if (row.id === 'noLogsRow') return;
+                    const rowSev = row.getAttribute('data-severity');
+                    if (severity === 'ALL' || rowSev === severity) {{
+                        row.style.display = '';
+                    }} else {{
+                        row.style.display = 'none';
+                    }}
+                }});
             }}
         </script>
     </body>
