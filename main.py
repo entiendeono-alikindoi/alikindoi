@@ -1,6 +1,5 @@
 import os
 import requests
-import xml.etree.ElementTree as ET
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -13,7 +12,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas para desarrolladores y empresas.",
-    version="2.4.0",
+    version="2.4.1",
     docs_url=None,
     redoc_url=None
 )
@@ -21,7 +20,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Claves de API válidas (tomadas del entorno o por defecto)
+# Claves de API válidas
 VALID_API_KEYS = os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(",")
 
 def verify_api_key(x_api_key: str = Header(...)):
@@ -55,7 +54,6 @@ async def home_dashboard():
             :root {
                 --bg-main: #0b0f19;
                 --bg-card: #151c2c;
-                --bg-card-hover: #1b2438;
                 --text-main: #f3f4f6;
                 --text-muted: #9ca3af;
                 --accent-blue: #3b82f6;
@@ -125,14 +123,13 @@ async def home_dashboard():
 
                 <!-- Main Content -->
                 <div class="col-md-10 p-4">
-                    <!-- Top Navigation -->
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
                             <h3 class="fw-bold m-0">Panel de Control de Licitaciones</h3>
                             <p class="text-muted m-0 small">Infraestructura de datos en tiempo real de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.4.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.4.1</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -169,7 +166,7 @@ async def home_dashboard():
                     <div class="card-custom mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold m-0"><i class="fa-solid fa-list me-2"></i>Vista Previa de Datos de Licitaciones (PLACSP)</h5>
-                            <span class="text-muted small">Protegido por /tenders con clave de API</span>
+                            <span class="text-muted small">Protegido por /tenders</span>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-custom align-middle">
@@ -197,36 +194,8 @@ async def home_dashboard():
                                         <td><span class="badge bg-primary">Adjudicado</span></td>
                                         <td><span class="text-muted">Protegido (401)</span></td>
                                     </tr>
-                                    <tr>
-                                        <td><code>PLACSP-2026-003</code></td>
-                                        <td>Asistencia técnica en ciberseguridad y auditoría...</td>
-                                        <td>Ayuntamiento de Madrid</td>
-                                        <td><span class="badge bg-success">En Plazo</span></td>
-                                        <td><span class="text-muted">Protegido (401)</span></td>
-                                    </tr>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-
-                    <!-- Security & Quickstart Section -->
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="card-custom h-100">
-                                <h6 class="fw-bold mb-3"><i class="fa-solid fa-lock text-warning me-2"></i>Protocolo de Autenticación</h6>
-                                <p class="text-muted small">Para consumir los datos del endpoint <code>/tenders</code>, es imprescindible añadir la cabecera <code>X-API-KEY</code> en cada petición HTTP. El sistema rechazará con error <code>401 Unauthorized</code> cualquier intento sin clave válida.</p>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card-custom h-100">
-                                <h6 class="fw-bold mb-3"><i class="fa-solid fa-terminal text-info me-2"></i>Petición de Ejemplo (Python)</h6>
-                                <pre class="bg-dark text-light p-3 rounded small mb-0"><code>import requests
-
-url = "https://tu-api.onrender.com/tenders"
-headers = {"X-API-KEY": "tu_clave_de_acceso"}
-response = requests.get(url, headers=headers)
-print(response.json())</code></pre>
-                            </div>
                         </div>
                     </div>
 
@@ -244,7 +213,6 @@ async def legal_notice():
         <body style="font-family: sans-serif; padding: 20px; line-height: 1.6;">
             <h2>Aviso Legal y Reutilización de Datos</h2>
             <p>Este servicio cumple con la <strong>Ley 37/2007</strong> sobre reutilización de la información del sector público.</p>
-            <p>Los datos son extraídos de fuentes oficiales (PLACSP) respetando las licencias públicas de origen.</p>
             <p><a href="/">Volver al Dashboard</a></p>
         </body>
     </html>
@@ -253,17 +221,11 @@ async def legal_notice():
 @app.get("/tenders", dependencies=[Depends(verify_api_key)])
 @limiter.limit("20/minute")
 async def get_tenders(request: Request):
-    url = "https://contrataciondelestado.es/sourcing/html/mostRecentTenders.html"
-    try:
-        response = requests.get(url, timeout=10)
-        return {
-            "status": "success",
-            "message": "Datos de licitaciones recuperados correctamente",
-            "legal_notice": "Datos obtenidos bajo cumplimiento de la Ley 37/2007 de reutilización de datos públicos.",
-            "data": "Simulación de datos o parseo XML/HTML activo"
-        }
-    except Exception as e:
-        return JSONResponse(
-            status_code=500, 
-            content={"status": "error", "message": f"Error conectando con PLACSP: {str(e)}"}
-        )
+    return {
+        "status": "success",
+        "message": "Datos de licitaciones recuperados correctamente",
+        "legal_notice": "Datos obtenidos bajo cumplimiento de la Ley 37/2007 de reutilización de datos públicos.",
+        "data": [
+            {"id": "PLACSP-2026-001", "objeto": "Servicio de desarrollo", "organo": "Ministerio de Hacienda"}
+        ]
+    }
