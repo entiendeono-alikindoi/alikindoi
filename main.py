@@ -7,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 
-API_VERSION = "4.2.0"
+API_VERSION = "4.3.0"
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
@@ -17,7 +17,7 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.2.0
+# Estructuras de datos para la versión Enterprise v4.3.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -55,7 +55,7 @@ def fetch_real_placsp_tenders():
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Licitación Enterprise v4.2 (Conector Oficial) número {i}",
+            "objeto": f"Licitación Enterprise v4.3 (Conector Oficial) número {i}",
             "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
             "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
             "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -69,7 +69,8 @@ def verify_api_key(x_api_key: str = Header(...)):
         AUDIT_LOGS.insert(0, {
             "timestamp": datetime.now().isoformat(),
             "key_used": x_api_key[:6] + "..." if len(x_api_key) > 6 else "INVALID",
-            "status": "REJECTED (Unauthorized)"
+            "status": "REJECTED (Unauthorized)",
+            "severity": "WARNING"
         })
         raise HTTPException(
             status_code=401, 
@@ -87,7 +88,8 @@ def verify_api_key(x_api_key: str = Header(...)):
             AUDIT_LOGS.insert(0, {
                 "timestamp": datetime.now().isoformat(),
                 "key_used": x_api_key[:6] + "...",
-                "status": f"REJECTED (Rate Limit Tier: {tier})"
+                "status": f"REJECTED (Rate Limit Tier: {tier})",
+                "severity": "DANGER"
             })
             raise HTTPException(
                 status_code=429,
@@ -103,10 +105,11 @@ def verify_api_key(x_api_key: str = Header(...)):
     AUDIT_LOGS.insert(0, {
         "timestamp": datetime.now().isoformat(),
         "key_used": key_identifier,
-        "status": f"SUCCESS ({tier.upper()})"
+        "status": f"SUCCESS ({tier.upper()})",
+        "severity": "SUCCESS"
     })
     
-    if len(AUDIT_LOGS) > 50:
+    if len(AUDIT_LOGS) > 75:
         AUDIT_LOGS.pop()
 
     return x_api_key
@@ -121,7 +124,7 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise."""
+    """Endpoint público de control de salud Enterprise con traza de severidad."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
@@ -129,6 +132,7 @@ async def health_check():
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
         "webhooks_registered": len(REGISTERED_WEBHOOKS),
+        "audit_logs_retained": len(AUDIT_LOGS),
         "timestamp": datetime.now().isoformat(),
         "legal_notice": "Servicio operando bajo la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
@@ -239,7 +243,7 @@ async def search_tenders(
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
-    logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if 'SUCCESS' in log['status'] else 'danger'}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:10]])
+    logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if log['severity']=='SUCCESS' else ('warning text-dark' if log['severity']=='WARNING' else 'danger')}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:15]])
     if not logs_html:
         logs_html = "<tr><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
 
@@ -345,7 +349,7 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Conector Activo</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Auditoría Pro</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -424,14 +428,14 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-6">
                             <div class="card-custom h-100">
-                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Últimos Eventos de Auditoría</h5>
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría de Seguridad y Eventos (v4.3)</h5>
                                 <div class="table-responsive">
                                     <table class="table table-dark table-striped table-sm align-middle">
                                         <thead>
                                             <tr>
                                                 <th>Hora</th>
                                                 <th>Clave</th>
-                                                <th>Estado</th>
+                                                <th>Estado / Severidad</th>
                                             </tr>
                                         </thead>
                                         <tbody>
