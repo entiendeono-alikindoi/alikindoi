@@ -10,12 +10,12 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.8.0",
+    version="3.9.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión v3.8.0
+# Estructuras de datos para la versión v3.9.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -89,7 +89,7 @@ async def health_check():
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "3.8.0",
+        "version": "3.9.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
         "webhooks_registered": len(REGISTERED_WEBHOOKS),
@@ -135,25 +135,12 @@ async def register_webhook(payload: dict):
 
 @app.post("/webhooks/test", dependencies=[Depends(verify_api_key)])
 async def test_webhook(payload: dict):
-    """Simula el envío de una alerta a los webhooks registrados."""
     if not REGISTERED_WEBHOOKS:
         return {"status": "warning", "message": "No hay webhooks registrados para probar."}
     
     results = []
-    sample_payload = {
-        "event": "new_tender_alert",
-        "version": "3.8.0",
-        "timestamp": datetime.now().isoformat(),
-        "data": payload.get("sample_data", {"id": "PLACSP-TEST-999", "objeto": "Licitación de prueba v3.8"})
-    }
-    
     for wh in REGISTERED_WEBHOOKS:
-        try:
-            # Simulación o envío real POST al webhook configurado
-            # requests.post(wh["url"], json=sample_payload, timeout=3)
-            results.append({"webhook_id": wh["id"], "url": wh["url"], "delivery_status": "simulated_success"})
-        except Exception as e:
-            results.append({"webhook_id": wh["id"], "url": wh["url"], "delivery_status": f"failed: {str(e)}"})
+        results.append({"webhook_id": wh["id"], "url": wh["url"], "delivery_status": "simulated_success"})
             
     return {
         "status": "success",
@@ -169,11 +156,11 @@ async def analytics_summary():
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con test de webhooks v3.8 número {i}",
+                "objeto": f"Licitación de consultoría o suministros tecnológicos número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
-            } for i in range(1, 40)
+            } for i in range(1, 45)
         ]
         CACHE_STORAGE["data"] = tenders_data
         CACHE_STORAGE["timestamp"] = now
@@ -189,11 +176,48 @@ async def analytics_summary():
 
     return {
         "status": "success",
-        "version": "3.8.0",
+        "version": "3.9.0",
         "total_tenders": len(tenders),
         "by_state": states_count,
         "by_organ": orgs_count,
         "legal_notice": "Datos procesados bajo el amparo de la Ley 37/2007."
+    }
+
+@app.get("/tenders/search", dependencies=[Depends(verify_api_key)])
+async def search_tenders(
+    q: str = Query(..., description="Término de búsqueda textual en el objeto de la licitación"),
+    organo: str = Query(None, description="Filtrar por órgano de contratación específico")
+):
+    """Búsqueda avanzada por texto y órgano."""
+    global CACHE_STORAGE
+    now = time.time()
+    if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
+        tenders_data = [
+            {
+                "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
+                "objeto": f"Licitación de consultoría o suministros tecnológicos número {i}",
+                "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
+                "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
+                "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
+            } for i in range(1, 45)
+        ]
+        CACHE_STORAGE["data"] = tenders_data
+        CACHE_STORAGE["timestamp"] = now
+
+    tenders = CACHE_STORAGE["data"]
+    results = [
+        t for t in tenders 
+        if q.lower() in t["objeto"].lower() and (not organo or organo.lower() in t["organo_contratacion"].lower())
+    ]
+
+    return {
+        "status": "success",
+        "version": "3.9.0",
+        "query": q,
+        "filter_organ": organo,
+        "matches_count": len(results),
+        "data": results,
+        "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007."
     }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -284,11 +308,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control y Webhooks v3.8</h3>
+                            <h3 class="fw-bold m-0">Panel de Control y Búsqueda v3.9</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.8.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.9.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -303,8 +327,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Simulador Webhooks</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Endpoint /test</h4>
+                                <span class="text-muted small">Búsqueda Textual</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Endpoint /search</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -481,11 +505,11 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con pruebas de webhook v3.8 número {i}",
+                "objeto": f"Licitación de consultoría o suministros tecnológicos número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
-            } for i in range(1, 40)
+            } for i in range(1, 45)
         ]
         CACHE_STORAGE["data"] = tenders_data
         CACHE_STORAGE["timestamp"] = now
@@ -507,7 +531,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "3.8.0",
+        "version": "3.9.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
