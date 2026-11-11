@@ -567,7 +567,43 @@ async def legal_notice():
             <p><a href="/" style="color: #3b82f6;">Volver al Dashboard</a></p>
         </body>
     </html>
-    """
+    """@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+async def terms_and_conditions():
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Términos y Condiciones - API PLACSP SaaS v{API_VERSION}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body style="background-color: #0b0f19; color: #f3f4f6; font-family: 'Segoe UI', sans-serif; padding: 40px;">
+        <div class="container" style="max-width: 800px;">
+            <h1 class="fw-bold mb-4">Términos y Condiciones del Servicio (v{API_VERSION})</h1>
+            <p class="text-muted">Última actualización: Noviembre de 2026</p>
+            
+            <hr class="border-secondary my-4">
+
+            <h5 class="text-info mt-4">1. Naturaleza del Servicio y Fuente de Datos</h5>
+            <p>El servicio consiste en una pasarela tecnológica de agregación, filtrado y optimización de datos públicos obtenidos de la Plataforma de Contratación del Sector Público (PLACSP), operando bajo el amparo de la <strong>Ley 37/2007</strong>. Actuamos como mero intermediario tecnológico y no asumimos ninguna responsabilidad sobre la exactitud, veracidad o disponibilidad de los datos originales publicados por los organismos públicos oficiales.</p>
+
+            <h5 class="text-info mt-4">2. Disponibilidad y Mantenimiento ("Garantía Anti-Rupturas")</h5>
+            <p>Destinaremos nuestros mejores esfuerzos técnicos (<em>Best Efforts</em>) a mantener la continuidad del servicio y actualizar los conectores ante posibles modificaciones estructurales de la fuente oficial. No obstante, no se garantiza un funcionamiento ininterrumpido ni libre de errores debido a posibles caídas, cambios imprevistos o fallos técnicos en los servidores de la administración pública.</p>
+
+            <h5 class="text-info mt-4">3. Limitación de Responsabilidad (Cap of Liability)</h5>
+            <p>En ningún caso el Proveedor será responsable de daños indirectos, pérdida de negocio, lucro cesante o pérdida de contratos derivados del uso de la API, interrupciones del servicio o retrasos en las alertas. <strong>La responsabilidad máxima total</strong> frente al Cliente por cualquier reclamación estará estrictamente limitada a la cantidad total abonada por el Cliente en concepto de suscripción durante el último mes en curso.</p>
+
+            <h5 class="text-info mt-4">4. Política de Cancelación</h5>
+            <p>El usuario puede cancelar su suscripción en cualquier momento. La cancelación surtirá efecto al finalizar el periodo de facturación ya pagado, sin reembolsos por periodos parciales.</p>
+
+            <div class="mt-5">
+                <a href="/" class="btn btn-outline-primary btn-sm">&larr; Volver al Dashboard</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """<li class="nav-item"><a class="nav-link" href="/terms"><i class="fa-solid file-contract me-2"></i>Términos y Condiciones</a></li>
 
 @app.get("/tenders", dependencies=[Depends(verify_api_key)])
 async def get_tenders(
