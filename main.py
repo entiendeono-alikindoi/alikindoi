@@ -10,15 +10,16 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.2.0",
+    version="3.3.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Base de datos en memoria, control de tráfico, caché y auditoría comercial
+# Estructuras de datos avanzadas para v3.3.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
+API_KEY_METRICS = {} # Conteo total de llamadas por clave para control comercial
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
 
@@ -39,9 +40,8 @@ def verify_api_key(x_api_key: str = Header(...)):
             detail="Acceso Denegado: Clave de API inválida o ausente."
         )
     
-    # Determinar límites según el plan (Tier) de la clave
     tier = "enterprise" if x_api_key in MASTER_KEYS else DYNAMIC_API_KEYS.get(x_api_key, {}).get("tier", "free")
-    limit_rate = 60 if tier == "enterprise" else 20 # 60 req/min para Enterprise, 20 para Free
+    limit_rate = 60 if tier == "enterprise" else 20
 
     if x_api_key not in MASTER_KEYS:
         client_history = REQUEST_COUNTS.get(x_api_key, [])
@@ -61,9 +61,13 @@ def verify_api_key(x_api_key: str = Header(...)):
         client_history.append(now)
         REQUEST_COUNTS[x_api_key] = client_history
 
+    # Registrar métrica de uso acumulada por clave
+    key_identifier = x_api_key[:6] + "..." if x_api_key not in MASTER_KEYS else "MASTER_KEY"
+    API_KEY_METRICS[key_identifier] = API_KEY_METRICS.get(key_identifier, 0) + 1
+
     AUDIT_LOGS.insert(0, {
         "timestamp": datetime.now().isoformat(),
-        "key_used": x_api_key[:6] + "..." if x_api_key not in MASTER_KEYS else "MASTER_KEY",
+        "key_used": key_identifier,
         "status": f"SUCCESS ({tier.upper()})"
     })
     
@@ -82,7 +86,6 @@ async def custom_swagger_ui_html():
 
 @app.post("/request-key")
 async def request_api_key(payload: dict = None):
-    # Permite elegir el plan al solicitar la clave (por defecto 'free')
     plan_requested = payload.get("tier", "free") if payload else "free"
     new_key = f"key_{plan_requested}_{uuid.uuid4().hex[:10]}"
     
@@ -104,6 +107,10 @@ async def home_dashboard():
     logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if 'SUCCESS' in log['status'] else 'danger'}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:10]])
     if not logs_html:
         logs_html = "<tr><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
+
+    metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} peticiones</span></td></tr>" for k, v in API_KEY_METRICS.items()])
+    if not metrics_html:
+        metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo registrado todavía.</td></tr>"
 
     return f"""
     <!DOCTYPE html>
@@ -178,11 +185,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control Comercial</h3>
+                            <h3 class="fw-bold m-0">Panel de Métricas y Control SaaS</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.2.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.3.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -191,8 +198,8 @@ async def home_dashboard():
                     <div class="row g-3 mb-4">
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Modelo Comercial</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-tags me-2"></i>Multi-Tier SaaS</h4>
+                                <span class="text-muted small">Arquitectura</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-chart-pie me-2"></i>Métricas v3.3</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -232,22 +239,44 @@ async def home_dashboard():
                         </div>
                     </div>
 
-                    <!-- Audit Logs Table Card -->
-                    <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría Comercial y de Tráfico (v3.2.0)</h5>
-                        <div class="table-responsive">
-                            <table class="table table-dark table-striped table-sm align-middle">
-                                <thead>
-                                    <tr>
-                                        <th>Marca Temporal</th>
-                                        <th>Clave (Identificador)</th>
-                                        <th>Estado / Plan</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {logs_html}
-                                </tbody>
-                            </table>
+                    <!-- Metrics & Usage Summary Cards -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <div class="card-custom h-100">
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Consumo Acumulado por Clave</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Identificador Clave</th>
+                                                <th>Peticiones Totales</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {metrics_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card-custom h-100">
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Últimos Eventos de Auditoría</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Hora</th>
+                                                <th>Clave</th>
+                                                <th>Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {logs_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -305,7 +334,7 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación comercial indexada número {i}",
+                "objeto": f"Licitación con métricas integradas número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -324,7 +353,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
