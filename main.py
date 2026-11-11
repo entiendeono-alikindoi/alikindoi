@@ -1,4 +1,6 @@
 import os
+import uuid
+from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -6,15 +8,19 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas para desarrolladores y empresas.",
-    version="2.4.2",
+    version="2.5.0",
     docs_url=None,
     redoc_url=None
 )
 
-VALID_API_KEYS = os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(",")
+# Base de datos en memoria para claves emitidas dinámicamente
+DYNAMIC_API_KEYS = {}
+
+# Claves maestras por defecto desglosadas por variable de entorno
+MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
 
 def verify_api_key(x_api_key: str = Header(...)):
-    if x_api_key not in VALID_API_KEYS:
+    if x_api_key not in MASTER_KEYS and x_api_key not in DYNAMIC_API_KEYS:
         raise HTTPException(
             status_code=401, 
             detail="Acceso Denegado: Clave de API inválida o ausente."
@@ -28,6 +34,23 @@ async def custom_swagger_ui_html():
         title=app.title + " - Consola de Documentación",
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
     )
+
+@app.post("/request-key")
+async def request_api_key(payload: dict = None):
+    # Genera una nueva API Key automáticamente
+    new_key = f"demo_key_{uuid.uuid4().hex[:12]}"
+    DYNAMIC_API_KEYS[new_key] = {
+        "created_at": datetime.now().isoformat(),
+        "tier": "free_tier",
+        "status": "active"
+    }
+    return {
+        "status": "success",
+        "api_key": new_key,
+        "message": "Guarde su clave. Utilícela en el encabezado X-API-KEY para autenticarse.",
+        "tier": "Gratuito (Evaluación)",
+        "rate_limit": "20 req/min"
+    }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
@@ -119,7 +142,7 @@ async def home_dashboard():
                             <p class="text-muted m-0 small">Infraestructura de datos en tiempo real de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.4.2</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.5.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -140,14 +163,28 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Control de Acceso</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Protegido</h4>
+                                <span class="text-muted small">Emisión de Claves</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Dinámica (/request-key)</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Conformidad Legal</span>
                                 <h4 class="fw-bold mt-2 mb-0 text-warning">Ley 37/2007</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Request Sandbox Card -->
+                    <div class="card-custom mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Free Tier)</h5>
+                        </div>
+                        <p class="text-muted small">Haz clic para emitir una clave de evaluación activa inmediatamente en el sistema:</p>
+                        <button onclick="generateKey()" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-plus me-1"></i> Generar API Key de Prueba</button>
+                        <div id="keyDisplay" class="mt-3" style="display:none;">
+                            <div class="alert alert-dark border border-secondary text-light">
+                                <strong>Tu API Key:</strong> <code id="generatedKey" class="text-warning"></code>
                             </div>
                         </div>
                     </div>
@@ -192,6 +229,21 @@ async def home_dashboard():
                 </div>
             </div>
         </div>
+
+        <script>
+            async function generateKey() {
+                try {
+                    const res = await fetch('/request-key', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.api_key) {
+                        document.getElementById('generatedKey').innerText = data.api_key;
+                        document.getElementById('keyDisplay').style.display = 'block';
+                    }
+                } catch (e) {
+                    alert('Error generando la clave.');
+                }
+            }
+        </script>
     </body>
     </html>
     """
@@ -215,6 +267,7 @@ async def get_tenders(request: Request):
         "message": "Datos de licitaciones recuperados correctamente",
         "legal_notice": "Datos obtenidos bajo cumplimiento de la Ley 37/2007 de reutilización de datos públicos.",
         "data": [
-            {"id": "PLACSP-2026-001", "objeto": "Servicio de desarrollo", "organo": "Ministerio de Hacienda"}
+            {"id": "PLACSP-2026-001", "objeto": "Servicio de desarrollo", "organo": "Ministerio de Hacienda"},
+            {"id": "PLACSP-2026-002", "objeto": "Infraestructura Cloud", "organo": "Consejería de Infraestructuras"}
         ]
     }
