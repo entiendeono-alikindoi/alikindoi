@@ -3,22 +3,14 @@ import requests
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
-# Configuración de límites y API
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas para desarrolladores y empresas.",
-    version="2.4.1",
+    version="2.4.2",
     docs_url=None,
     redoc_url=None
 )
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Claves de API válidas
 VALID_API_KEYS = os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(",")
@@ -129,7 +121,7 @@ async def home_dashboard():
                             <p class="text-muted m-0 small">Infraestructura de datos en tiempo real de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.4.1</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.4.2</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -150,8 +142,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Límite Global de Ratio</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">20 req/min</h4>
+                                <span class="text-muted small">Control de Acceso</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Protegido</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -219,7 +211,6 @@ async def legal_notice():
     """
 
 @app.get("/tenders", dependencies=[Depends(verify_api_key)])
-@limiter.limit("20/minute")
 async def get_tenders(request: Request):
     return {
         "status": "success",
