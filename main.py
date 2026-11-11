@@ -52,7 +52,6 @@ def fetch_real_placsp_tenders():
     except Exception:
         pass
 
-    # Fallback inteligente sintético garantizado para alta disponibilidad SaaS Enterprise
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
@@ -128,7 +127,6 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Release Candidate Enterprise."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
@@ -338,6 +336,7 @@ async def home_dashboard():
                         <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i>Swagger Consola</a></li>
                         <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i>Health Check</a></li>
                         <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Marco Legal</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/terms"><i class="fa-solid fa-file-contract me-2"></i>Términos y Condiciones</a></li>
                     </ul>
                 </div>
 
@@ -567,7 +566,9 @@ async def legal_notice():
             <p><a href="/" style="color: #3b82f6;">Volver al Dashboard</a></p>
         </body>
     </html>
-    """@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+    """
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
 async def terms_and_conditions():
     return f"""
     <!DOCTYPE html>
@@ -603,7 +604,7 @@ async def terms_and_conditions():
         </div>
     </body>
     </html>
-    """<li class="nav-item"><a class="nav-link" href="/terms"><i class="fa-solid file-contract me-2"></i>Términos y Condiciones</a></li>
+    """
 
 @app.get("/tenders", dependencies=[Depends(verify_api_key)])
 async def get_tenders(
