@@ -3,32 +3,74 @@ from fastapi.security import APIKeyHeader
 import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Optional
+import os
+import time
+from collections import defaultdict
 
 app = FastAPI(
-    title="API de Tenders Públicos - España",
-    description="API comercial de consulta y filtrado de licitaciones públicas (PLACSP) con atribución y limitación de responsabilidad.",
-    version="1.2.0"
+    title="API de Tenders Públicos - España (Production Grade)",
+    description="API comercial segura de licitaciones públicas con rate limiting estricto, trazabilidad y exención de responsabilidad.",
+    version="2.1.0"
 )
 
 OFFICIAL_FEED_URL = "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom"
 
-# Aviso legal riguroso adaptado a la Ley 37/2007 de Reutilización y exención de responsabilidad
+# Aviso legal inamovible (Ley 37/2007)
 LEGAL_NOTICE = (
     "AVISO LEGAL Y LIMITACIÓN DE RESPONSABILIDAD: Datos obtenidos de fuentes abiertas "
-    "institucionales (Plataforma de Contratación del Sector Público - PLACSP) al amparo de la "
-    "Ley 37/2007 sobre reutilización de la información del sector público. El proveedor de esta API "
+    "institucionales (PLACSP) al amparo de la Ley 37/2007. El proveedor de esta API "
     "actúa como mero agregador tecnológico y de índice, no otorga derechos de propiedad intelectual, "
     "no garantiza la inalterabilidad o exactitud de los datos originales, y queda totalmente exento de "
-    "responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales "
-    "o tareas de mantenimiento de la fuente original (contrataciondelestado.es)."
+    "responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales."
 )
 
-VALID_API_KEYS = {
-    "demo_key_123": "Cliente Demo",
-    "cliente_premium_001": "Empresa Suscrita A",
-}
+# ---------------------------------------------------------------------------
+# GESTIÓN DE CLIENTES POR VARIABLES DE ENTORNO
+# ---------------------------------------------------------------------------
+def cargar_clientes_autorizados():
+    clientes_por_defecto = {
+        "demo_key_123": "Cliente Demo",
+        "cliente_premium_001": "Empresa Suscrita A"
+    }
+    env_keys = os.getenv("API_KEYS_CONFIG")
+    if not env_keys:
+        return clientes_por_defecto
+    
+    configurados = {}
+    try:
+        for item in env_keys.split(","):
+            if ":" in item:
+                key, name = item.split(":", 1)
+                configurados[key.strip()] = name.strip()
+    except Exception:
+        return clientes_por_defecto
+    return configurados if configurados else clientes_por_defecto
 
+VALID_API_KEYS = cargar_clientes_autorizados()
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
+
+# ---------------------------------------------------------------------------
+# RATE LIMITING DEFENSIVO (Estricto: 20 peticiones por minuto)
+# ---------------------------------------------------------------------------
+REQUEST_WINDOW = 60  # segundos
+MAX_REQUESTS_PER_WINDOW = 20  # Límite comercial seguro
+request_counts = defaultdict(list)
+
+def verificar_rate_limit(api_key: str):
+    ahora = time.time()
+    peticiones_cliente = request_counts[api_key]
+    
+    # Filtrar peticiones dentro de la ventana de los últimos 60 segundos
+    peticions_validas = [t for t in peticiones_cliente if ahora - t < REQUEST_WINDOW]
+    
+    if len(peticions_validas) >= MAX_REQUESTS_PER_WINDOW:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Límite de peticiones excedido (Rate Limit). Máximo 20 peticiones por minuto."
+        )
+    
+    peticions_validas.append(ahora)
+    request_counts[api_key] = peticions_validas
 
 def verify_api_key(api_key: str = Depends(api_key_header)):
     if not api_key or api_key not in VALID_API_KEYS:
@@ -36,8 +78,12 @@ def verify_api_key(api_key: str = Depends(api_key_header)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Clave de API inválida o no proporcionada. Incluya el encabezado 'X-API-KEY'."
         )
+    verificar_rate_limit(api_key)
     return api_key
 
+# ---------------------------------------------------------------------------
+# CONSUMO RESILIENTE DE DATOS (PLACSP)
+# ---------------------------------------------------------------------------
 def fetch_real_tenders():
     tenders = []
     try:
@@ -45,7 +91,7 @@ def fetch_real_tenders():
             OFFICIAL_FEED_URL, 
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         )
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             xml_data = response.read()
             
         root = ET.fromstring(xml_data)
@@ -68,23 +114,20 @@ def fetch_real_tenders():
                 "enlace_oficial": link
             })
     except Exception:
-        tenders = [
-            {
-                "id": 1,
-                "titulo": "Servicios de desarrollo de software y ciberseguridad",
-                "organo": "Ministerio de Asuntos Económicos",
-                "resumen": "Contrato de servicio técnico.",
-                "fecha_actualizacion": "2026-06-30",
-                "enlace_oficial": "https://contrataciondelestado.es"
-            }
-        ]
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="La fuente oficial de la PLACSP no se encuentra disponible temporalmente. Exención de responsabilidad aplicada."
+        )
     return tenders
 
+# ---------------------------------------------------------------------------
+# ENDPOINTS
+# ---------------------------------------------------------------------------
 @app.get("/", tags=["General"])
 def inicio():
     return {
-        "estado": "API Activa",
-        "mensaje": "Bienvenido a la API de Licitaciones Públicas de España",
+        "estado": "API Activa y Blindada",
+        "version": "2.1.0",
         "aviso_legal": LEGAL_NOTICE,
         "documentacion": "/docs",
         "terminos_legales": "/legal"
@@ -92,12 +135,11 @@ def inicio():
 
 @app.get("/legal", tags=["Legal y Términos"])
 def obtener_aviso_legal():
-    """Endpoint obligatorio para auditorías y aceptación de términos de servicio por parte de los clientes."""
     return {
         "condiciones_servicio": "El uso de esta API implica la aceptación de los términos de reutilización de datos abiertos.",
         "fuente_oficial": "https://contrataciondelestado.es",
         "aviso_legal_completo": LEGAL_NOTICE,
-        "exencion_responsabilidad": "El prestador del servicio no asume daños por la indisponibilidad temporal del feed de la PLACSP."
+        "exencion_responsabilidad": "El prestador del servicio no asume daños por la indisponibilidad temporal o fallos en el feed de la PLACSP."
     }
 
 @app.get("/tenders", tags=["Licitaciones"])
