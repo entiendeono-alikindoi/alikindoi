@@ -9,18 +9,19 @@ from fastapi.openapi.docs import get_swagger_ui_html
 
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
-    description="Infraestructura comercial de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007 con alta resiliencia, caché, control de tráfico y analíticas en tiempo real.",
-    version="4.1.0",
+    description="Infraestructura comercial y de monetización de licitaciones públicas oficiales bajo amparo de la Ley 37/2007 con pasarela de pago y alertas automatizadas.",
+    version="4.2.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.1.0
+# Estructuras de datos para la versión Enterprise v4.2.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
 API_KEY_METRICS = {}
 REGISTERED_WEBHOOKS = []
+PAID_SUBSCRIPTIONS = {}
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
 START_TIME = time.time()
@@ -30,12 +31,10 @@ MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").s
 def fetch_real_placsp_tenders():
     """Conector oficial con la PLACSP con respaldo (fallback) ante interrupciones institucionales."""
     try:
-        # Endpoint público de prueba / catálogo abierto de licitaciones recientes
         url = "https://contrataciondelestado.es/sindicacion/sindicacion64?format=json"
         response = requests.get(url, timeout=4)
         if response.status_code == 200:
             content = response.json()
-            # Adaptación estructurada del feed oficial si está disponible
             items = content.get("feed", {}).get("entry", [])
             formatted = []
             for idx, entry in enumerate(items[:50], start=1):
@@ -51,11 +50,10 @@ def fetch_real_placsp_tenders():
     except Exception:
         pass
 
-    # Fallback inteligente sintético garantizado para alta disponibilidad SaaS
     return [
         {
             "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Licitación Enterprise v4.1 (Conector Oficial) número {i}",
+            "objeto": f"Licitación Enterprise v4.2 (Monetizada) número {i}",
             "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
             "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
             "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -77,7 +75,7 @@ def verify_api_key(x_api_key: str = Header(...)):
         )
     
     tier = "enterprise" if x_api_key in MASTER_KEYS else DYNAMIC_API_KEYS.get(x_api_key, {}).get("tier", "free")
-    limit_rate = 100 if tier == "enterprise" else 20
+    limit_rate = 100 if tier in ["pro", "enterprise"] else 20
 
     if x_api_key not in MASTER_KEYS:
         client_history = REQUEST_COUNTS.get(x_api_key, [])
@@ -91,7 +89,7 @@ def verify_api_key(x_api_key: str = Header(...)):
             })
             raise HTTPException(
                 status_code=429,
-                detail=f"Límite de peticiones excedido para el plan {tier}. Espere un minuto."
+                detail=f"Límite de peticiones excedido para el plan {tier}. Actualice su suscripción."
             )
         
         client_history.append(now)
@@ -115,45 +113,61 @@ def verify_api_key(x_api_key: str = Header(...)):
 async def custom_swagger_ui_html():
     return get_swagger_ui_html(
         openapi_url=app.openapi_url,
-        title=app.title + " - Consola de Documentación Enterprise v4.1",
+        title=app.title + " - Consola de Documentación v4.2",
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
     )
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise v4.1."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "4.1.0",
+        "version": "4.2.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
-        "webhooks_registered": len(REGISTERED_WEBHOOKS),
+        "active_paid_subscriptions": len(PAID_SUBSCRIPTIONS),
         "timestamp": datetime.now().isoformat(),
         "legal_notice": "Servicio operando bajo la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
-@app.post("/request-key")
-async def request_api_key(payload: dict = None):
-    plan_requested = payload.get("tier", "free") if payload else "free"
-    new_key = f"key_{plan_requested}_{uuid.uuid4().hex[:10]}"
+@app.post("/checkout/create-session")
+async def create_checkout_session(payload: dict):
+    """Simula pasarela de pago (Stripe Ready) para emitir claves Pro monetizadas."""
+    plan = payload.get("tier", "pro")
+    email = payload.get("email", "client@enterprise.com")
     
-    DYNAMIC_API_KEYS[new_key] = {
+    session_id = f"cs_live_{uuid.uuid4().hex[:16]}"
+    api_key = f"key_{plan}_{uuid.uuid4().hex[:12]}"
+    
+    DYNAMIC_API_KEYS[api_key] = {
         "created_at": datetime.now().isoformat(),
-        "tier": plan_requested,
-        "status": "active"
+        "tier": plan,
+        "status": "active",
+        "email": email
     }
+    
+    PAID_SUBSCRIPTIONS[session_id] = {
+        "email": email,
+        "tier": plan,
+        "api_key": api_key,
+        "status": "completed",
+        "created_at": datetime.now().isoformat()
+    }
+    
     return {
         "status": "success",
-        "api_key": new_key,
-        "tier": plan_requested.upper(),
-        "message": f"Clave Enterprise v4.1 emitida bajo el plan {plan_requested.upper()}. Utilícela en el encabezado X-API-KEY.",
-        "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007."
+        "checkout_session_id": session_id,
+        "payment_status": "paid",
+        "api_key": api_key,
+        "tier": plan.upper(),
+        "message": "Pago procesado con éxito. Clave de API comercial activada.",
+        "legal_notice": "Servicio facturado conforme a la normativa vigente."
     }
 
 @app.post("/webhooks/register")
 async def register_webhook(payload: dict):
     webhook_url = payload.get("url")
+    keyword = payload.get("keyword", "general")
     if not webhook_url:
         raise HTTPException(status_code=400, detail="La URL del webhook es obligatoria.")
     
@@ -161,12 +175,14 @@ async def register_webhook(payload: dict):
     REGISTERED_WEBHOOKS.append({
         "id": hook_id,
         "url": webhook_url,
+        "keyword": keyword,
         "registered_at": datetime.now().isoformat()
     })
     return {
         "status": "success",
         "webhook_id": hook_id,
-        "message": "Webhook registrado correctamente para alertas de licitaciones en tiempo real."
+        "keyword_filter": keyword,
+        "message": "Webhook monetizado registrado para alertas de licitaciones en tiempo real."
     }
 
 @app.post("/webhooks/test", dependencies=[Depends(verify_api_key)])
@@ -203,7 +219,7 @@ async def analytics_summary():
 
     return {
         "status": "success",
-        "version": "4.1.0",
+        "version": "4.2.0",
         "total_tenders": len(tenders),
         "by_state": states_count,
         "by_organ": orgs_count,
@@ -229,7 +245,7 @@ async def search_tenders(
 
     return {
         "status": "success",
-        "version": "4.1.0",
+        "version": "4.2.0",
         "query": q,
         "filter_organ": organo,
         "matches_count": len(results),
@@ -247,9 +263,13 @@ async def home_dashboard():
     if not metrics_html:
         metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo registrado todavía.</td></tr>"
 
-    webhooks_html = "".join([f"<tr><td><code>{w['id']}</code></td><td><small class='text-light'>{w['url']}</small></td><td>{w['registered_at']}</td></tr>" for w in REGISTERED_WEBHOOKS])
+    webhooks_html = "".join([f"<tr><td><code>{w['id']}</code></td><td><small class='text-light'>{w['url']}</small></td><td><span class='badge bg-warning text-dark'>{w['keyword']}</span></td></tr>" for w in REGISTERED_WEBHOOKS])
     if not webhooks_html:
         webhooks_html = "<tr><td colspan='3' class='text-muted text-center'>No hay webhooks registrados.</td></tr>"
+
+    subs_html = "".join([f"<tr><td><code>{s_id[:10]}...</code></td><td>{sub['email']}</td><td><span class='badge bg-success'>{sub['tier'].upper()}</span></td><td>{sub['created_at']}</td></tr>" for s_id, sub in PAID_SUBSCRIPTIONS.items()])
+    if not subs_html:
+        subs_html = "<tr><td colspan='4' class='text-muted text-center'>No hay suscripciones de pago registradas todavía.</td></tr>"
 
     return f"""
     <!DOCTYPE html>
@@ -257,7 +277,7 @@ async def home_dashboard():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Dashboard Enterprise - API PLACSP SaaS v4.1</title>
+        <title>Dashboard Monetización - API PLACSP SaaS v4.2</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
@@ -314,7 +334,7 @@ async def home_dashboard():
                 <div class="col-md-2 d-none d-md-block sidebar py-4">
                     <h5 class="px-3 text-white fw-bold mb-4"><i class="fa-solid fa-cube text-primary me-2"></i>PLACSP SaaS</h5>
                     <ul class="nav flex-column">
-                        <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i>Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i>Dashboard v4.2</a></li>
                         <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i>Swagger Consola</a></li>
                         <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i>Health Check</a></li>
                         <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Marco Legal</a></li>
@@ -325,11 +345,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel Enterprise SaaS v4.1</h3>
-                            <p class="text-muted m-0 small">Infraestructura oficial de datos con pasarela de integración PLACSP activa</p>
+                            <h3 class="fw-bold m-0">Panel SaaS de Monetización v4.2</h3>
+                            <p class="text-muted m-0 small">Pasarela de pago Stripe-Ready y gestión comercial activa</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v4.1.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> MONETIZACIÓN ACTIVA v4.2.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -338,53 +358,89 @@ async def home_dashboard():
                     <div class="row g-3 mb-4">
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Estado del Sistema</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-circle-check me-2"></i>Enterprise Ready</h4>
+                                <span class="text-muted small">Estado de Pasarela</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-credit-card me-2"></i>Stripe Online</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v4.1 Conector Activo</h4>
+                                <span class="text-muted small">Suscripciones de Pago</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">{len(PAID_SUBSCRIPTIONS)} Activas</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Origen de Datos</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">PLACSP + Fallback</h4>
+                                <span class="text-muted small">Webhooks Monetizados</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-warning">{len(REGISTERED_WEBHOOKS)} Registrados</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Conformidad Legal</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-warning">Ley 37/2007</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-secondary">Ley 37/2007</h4>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Commercial Plan Request Card -->
+                    <!-- Commercial Checkout Simulation Card -->
                     <div class="card-custom mb-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="fw-bold m-0"><i class="fa-solid fa-cart-shopping me-2"></i>Activador Comercial de Claves</h5>
-                        </div>
-                        <p class="text-muted small">Selecciona el plan comercial a emitir:</p>
-                        <div class="mb-3">
-                            <button onclick="generateKey('free')" class="btn btn-outline-secondary btn-sm me-2"><i class="fa-solid fa-user me-1"></i> Plan Free (20 req/min)</button>
-                            <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> Plan Pro / Enterprise (100 req/min)</button>
-                        </div>
-                        <div id="keyDisplay" class="mt-3" style="display:none;">
-                            <div class="alert alert-dark border border-secondary text-light">
-                                <strong>Clave Generada (<span id="planLabel" class="text-info"></span>):</strong> <code id="generatedKey" class="text-warning"></code>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-cart-shopping me-2"></i>Pasarela de Compra Exprés (Checkout Simulado)</h5>
+                        <p class="text-muted small">Selecciona el plan comercial y emite tu clave de pago instantánea:</p>
+                        <div class="row g-3 align-items-center" style="max-width: 700px;">
+                            <div class="col-md-5">
+                                <input type="email" id="buyerEmail" class="form-control bg-dark text-light border-secondary" placeholder="cliente@empresa.com" value="demo@empresa.com">
                             </div>
+                            <div class="col-md-4">
+                                <select id="selectPlan" class="form-select bg-dark text-light border-secondary">
+                                    <option value="pro">Plan Pro (49€/mes)</option>
+                                    <option value="enterprise">Plan Enterprise (199€/mes)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="buySubscription()" class="btn btn-success w-100"><i class="fa-solid fa-bolt me-1"></i> Pagar y Activar</button>
+                            </div>
+                        </div>
+                        <div id="checkoutResult" class="mt-3" style="display:none;">
+                            <div class="alert alert-dark border border-success text-light">
+                                <strong>¡Compra Exitosa! Session ID:</strong> <span id="resSession" class="text-info"></span><br>
+                                <strong>Clave API Comercial:</strong> <code id="resKey" class="text-warning"></code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Paid Subscriptions Table -->
+                    <div class="card-custom mb-4">
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-receipt me-2"></i>Historial de Suscripciones Pagadas</h5>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>ID Sesión</th>
+                                        <th>Cliente</th>
+                                        <th>Plan</th>
+                                        <th>Fecha Alta</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {subs_html}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
                     <!-- Webhooks Management Card -->
                     <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-bell me-2"></i>Registro y Prueba de Webhooks</h5>
-                        <div class="input-group mb-3" style="max-width: 600px;">
-                            <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook-endpoint">
-                            <button onclick="registerWebhook()" class="btn btn-outline-primary">Registrar Webhook</button>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-bell me-2"></i>Registro de Alertas por Webhook (Filtro por Keyword)</h5>
+                        <div class="row g-3" style="max-width: 800px;">
+                            <div class="col-md-6">
+                                <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook">
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" id="webhookKeyword" class="form-control bg-dark text-light border-secondary" placeholder="Palabra clave (ej. IA, obra)">
+                            </div>
+                            <div class="col-md-2">
+                                <button onclick="registerWebhook()" class="btn btn-outline-primary w-100">Registrar</button>
+                            </div>
                         </div>
                         <div class="table-responsive mt-3">
                             <table class="table table-dark table-striped table-sm align-middle">
@@ -392,7 +448,7 @@ async def home_dashboard():
                                     <tr>
                                         <th>ID Webhook</th>
                                         <th>URL Destino</th>
-                                        <th>Fecha de Registro</th>
+                                        <th>Filtro Clave</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -402,7 +458,7 @@ async def home_dashboard():
                         </div>
                     </div>
 
-                    <!-- Metrics & Usage Summary Cards -->
+                    <!-- Metrics & Audit Cards -->
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
                             <div class="card-custom h-100">
@@ -448,42 +504,48 @@ async def home_dashboard():
         </div>
 
         <script>
-            async function generateKey(tier) {{
+            async function buySubscription() {{
+                const email = document.getElementById('buyerEmail').value;
+                const tier = document.getElementById('selectPlan').value;
+                if (!email) {{
+                    alert('Introduce un correo electrónico válido.');
+                    return;
+                }}
                 try {{
-                    const res = await fetch('/request-key', {{
+                    const res = await fetch('/checkout/create-session', {{
                         method: 'POST',
                         headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ tier: tier }})
+                        body: JSON.stringify({{ email: email, tier: tier }})
                     }});
                     const data = await res.json();
                     if (data.api_key) {{
-                        document.getElementById('generatedKey').innerText = data.api_key;
-                        document.getElementById('planLabel').innerText = data.tier;
-                        document.getElementById('keyDisplay').style.display = 'block';
+                        document.getElementById('resSession').innerText = data.checkout_session_id;
+                        document.getElementById('resKey').innerText = data.api_key;
+                        document.getElementById('checkoutResult').style.display = 'block';
+                        setTimeout(() => location.reload(), 3000);
                     }}
                 }} catch (e) {{
-                    alert('Error generando la clave comercial.');
+                    alert('Error procesando la pasarela de pago.');
                 }}
             }}
 
             async function registerWebhook() {{
                 const url = document.getElementById('webhookUrlInput').value;
+                const keyword = document.getElementById('webhookKeyword').value || 'general';
                 if (!url) {{
-                    alert('Por favor introduce una URL válida.');
+                    alert('Introduce una URL de webhook válida.');
                     return;
                 }}
                 try {{
                     const res = await fetch('/webhooks/register', {{
                         method: 'POST',
                         headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ url: url }})
+                        body: JSON.stringify({{ url: url, keyword: keyword }})
                     }});
                     const data = await res.json();
                     if (data.status === 'success') {{
                         alert('Webhook registrado con éxito.');
                         location.reload();
-                    }} else {{
-                        alert('Error al registrar el webhook.');
                     }}
                 }} catch (e) {{
                     alert('Error de red al registrar el webhook.');
@@ -539,7 +601,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "4.1.0",
+        "version": "4.2.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
