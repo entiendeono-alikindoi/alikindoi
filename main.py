@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Query, Depends, HTTPException, status, Request
 from fastapi.security import APIKeyHeader
+from fastapi.responses import HTMLResponse
 import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Optional
@@ -21,7 +22,7 @@ logger = logging.getLogger("TenderAPI")
 app = FastAPI(
     title="API de Tenders Públicos - España (Production Grade)",
     description="API comercial segura de licitaciones públicas con rate limiting, trazabilidad y exención de responsabilidad.",
-    version="2.2.0"
+    version="2.3.0"
 )
 
 OFFICIAL_FEED_URL = "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom"
@@ -71,7 +72,6 @@ def verificar_rate_limit(api_key: str, cliente_nombre: str, endpoint: str):
     ahora = time.time()
     peticiones_cliente = request_counts[api_key]
     
-    # Filtrar peticiones dentro de la ventana de 60 segundos
     peticions_validas = [t for t in peticiones_cliente if ahora - t < REQUEST_WINDOW]
     
     if len(peticions_validas) >= MAX_REQUESTS_PER_WINDOW:
@@ -98,7 +98,6 @@ def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
     cliente_nombre = VALID_API_KEYS.get(api_key, "Desconocido")
     verificar_rate_limit(api_key, cliente_nombre, path)
     
-    # Registro oficial de auditoría
     logger.info(f"ACCESO AUTORIZADO | Cliente: '{cliente_nombre}' | Ruta: {path} | IP: {client_ip}")
     return api_key
 
@@ -143,17 +142,154 @@ def fetch_real_tenders():
     return tenders
 
 # ---------------------------------------------------------------------------
-# ENDPOINTS
+# PORTAL WEB INTERACTIVO (PÁGINA PRINCIPAL)
 # ---------------------------------------------------------------------------
-@app.get("/", tags=["General"])
-def inicio():
-    return {
-        "estado": "API Activa y Blindada",
-        "version": "2.2.0",
-        "aviso_legal": LEGAL_NOTICE,
-        "documentacion": "/docs",
-        "terminos_legales": "/legal"
-    }
+@app.get("/", response_class=HTMLResponse, tags=["General"])
+def portal_bienvenida():
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Portal de Desarrollo | API PLACSP Tenders</title>
+        <style>
+            :root {
+                --bg: #0f172a;
+                --card: #1e293b;
+                --accent: #3b82f6;
+                --text: #f8fafc;
+                --muted: #94a3b8;
+                --border: #334155;
+            }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background-color: var(--bg);
+                color: var(--text);
+                margin: 0;
+                padding: 40px 20px;
+                display: flex;
+                justify-content: center;
+            }
+            .container {
+                max-width: 900px;
+                width: 100%;
+            }
+            .header {
+                border-bottom: 1px solid var(--border);
+                padding-bottom: 24px;
+                margin-bottom: 32px;
+            }
+            .badge {
+                background-color: #10b981;
+                color: #042f2e;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 4px 8px;
+                border-radius: 4px;
+                text-transform: uppercase;
+            }
+            h1 { font-size: 32px; margin: 12px 0 8px 0; }
+            p.subtitle { color: var(--muted); font-size: 16px; margin: 0; }
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 20px;
+                margin-bottom: 32px;
+            }
+            .card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 24px;
+            }
+            .card h3 { margin-top: 0; font-size: 18px; color: var(--accent); }
+            pre {
+                background: #090d16;
+                padding: 16px;
+                border-radius: 6px;
+                overflow-x: auto;
+                font-size: 13px;
+                color: #38bdf8;
+                border: 1px solid var(--border);
+            }
+            .btn {
+                display: inline-block;
+                background: var(--accent);
+                color: white;
+                text-decoration: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: 600;
+                margin-right: 12px;
+            }
+            .btn-secondary {
+                background: transparent;
+                border: 1px solid var(--border);
+                color: var(--text);
+            }
+            .footer-legal {
+                font-size: 12px;
+                color: var(--muted);
+                background: #1e293b50;
+                padding: 16px;
+                border-radius: 6px;
+                border: 1px solid var(--border);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <span class="badge">Producción v2.3.0</span>
+                <h1>API de Contratación Pública (PLACSP)</h1>
+                <p class="subtitle">Infraestructura de datos de licitaciones para desarrolladores y empresas.</p>
+            </div>
+
+            <div style="margin-bottom: 32px;">
+                <a href="/docs" class="btn">Explorar Consola Swagger (/docs)</a>
+                <a href="/legal" class="btn btn-secondary">Términos Legales (/legal)</a>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h3>⚡ Rendimiento y Seguridad</h3>
+                    <p style="font-size: 14px; color: var(--muted);">
+                        Autenticación mediante cabecera <code>X-API-KEY</code>. Control de peticiones activo de 
+                        <strong>20 req/min</strong> para garantizar la estabilidad del servicio.
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>⚖️ Marco Legal Cumplido</h3>
+                    <p style="font-size: 14px; color: var(--muted);">
+                        Servicio adaptado a la <strong>Ley 37/2007</strong> de reutilización de información del sector público. 
+                        Trazabilidad completa y auditoría de uso.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 32px;">
+                <h3>🚀 Ejemplo de Integración Rápida (Python)</h3>
+                <pre>import requests
+
+headers = {"X-API-KEY": "tu_clave_de_acceso"}
+response = requests.get("https://mi-api-tender.onrender.com/tenders", headers=headers)
+
+if response.status_code == 200:
+    licitaciones = response.json()
+    print(f"Total obtenidas: {licitaciones['total']}")
+else:
+    print(f"Error: {response.status_code}")</pre>
+            </div>
+
+            <div class="footer-legal">
+                <strong>Aviso de exención de responsabilidad:</strong> Los datos se obtienen en tiempo real de fuentes públicas institucionales. El servicio actúa únicamente como agregador tecnológico y de índice estructurado.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @app.get("/legal", tags=["Legal y Términos"])
 def obtener_aviso_legal():
