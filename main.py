@@ -10,16 +10,17 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.5.0",
+    version="3.6.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión v3.5.0
+# Estructuras de datos para la versión v3.6.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
 API_KEY_METRICS = {}
+REGISTERED_WEBHOOKS = []
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300
 START_TIME = time.time()
@@ -88,9 +89,10 @@ async def health_check():
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "3.5.0",
+        "version": "3.6.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
+        "webhooks_registered": len(REGISTERED_WEBHOOKS),
         "timestamp": datetime.now().isoformat(),
         "legal_notice": "Servicio operando bajo la Ley 37/2007."
     }
@@ -113,6 +115,24 @@ async def request_api_key(payload: dict = None):
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
+@app.post("/webhooks/register")
+async def register_webhook(payload: dict):
+    webhook_url = payload.get("url")
+    if not webhook_url:
+        raise HTTPException(status_code=400, detail="La URL del webhook es obligatoria.")
+    
+    hook_id = f"wh_{uuid.uuid4().hex[:8]}"
+    REGISTERED_WEBHOOKS.append({
+        "id": hook_id,
+        "url": webhook_url,
+        "registered_at": datetime.now().isoformat()
+    })
+    return {
+        "status": "success",
+        "webhook_id": hook_id,
+        "message": "Webhook registrado correctamente para futuras alertas de licitaciones."
+    }
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
     logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if 'SUCCESS' in log['status'] else 'danger'}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:10]])
@@ -122,6 +142,10 @@ async def home_dashboard():
     metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} peticiones</span></td></tr>" for k, v in API_KEY_METRICS.items()])
     if not metrics_html:
         metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo registrado todavía.</td></tr>"
+
+    webhooks_html = "".join([f"<tr><td><code>{w['id']}</code></td><td><small class='text-light'>{w['url']}</small></td><td>{w['registered_at']}</td></tr>" for w in REGISTERED_WEBHOOKS])
+    if not webhooks_html:
+        webhooks_html = "<tr><td colspan='3' class='text-muted text-center'>No hay webhooks registrados.</td></tr>"
 
     return f"""
     <!DOCTYPE html>
@@ -197,11 +221,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control y Analíticas SaaS</h3>
+                            <h3 class="fw-bold m-0">Panel de Control y Webhooks SaaS</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.5.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.6.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -216,8 +240,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Exportación</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">JSON / CSV Activo</h4>
+                                <span class="text-muted small">Notificaciones</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Webhooks Activos</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -248,6 +272,30 @@ async def home_dashboard():
                             <div class="alert alert-dark border border-secondary text-light">
                                 <strong>Clave Generada (<span id="planLabel" class="text-info"></span>):</strong> <code id="generatedKey" class="text-warning"></code>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Webhooks Management Card -->
+                    <div class="card-custom mb-4">
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-bell me-2"></i>Registro de Webhooks</h5>
+                        <p class="text-muted small">Añade endpoints externos para recibir notificaciones automáticas:</p>
+                        <div class="input-group mb-3" style="max-width: 600px;">
+                            <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook-endpoint">
+                            <button onclick="registerWebhook()" class="btn btn-outline-primary">Registrar Webhook</button>
+                        </div>
+                        <div class="table-responsive mt-3">
+                            <table class="table table-dark table-striped table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>ID Webhook</th>
+                                        <th>URL Destino</th>
+                                        <th>Fecha de Registro</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {webhooks_html}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -314,6 +362,30 @@ async def home_dashboard():
                     alert('Error generando la clave comercial.');
                 }}
             }}
+
+            async function registerWebhook() {{
+                const url = document.getElementById('webhookUrlInput').value;
+                if (!url) {{
+                    alert('Por favor introduce una URL válida.');
+                    return;
+                }}
+                try {{
+                    const res = await fetch('/webhooks/register', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ url: url }})
+                    }});
+                    const data = await res.json();
+                    if (data.status === 'success') {{
+                        alert('Webhook registrado con éxito.');
+                        location.reload();
+                    }} else {{
+                        alert('Error al registrar el webhook.');
+                    }}
+                }} catch (e) {{
+                    alert('Error de red al registrar el webhook.');
+                }}
+            }}
         </script>
     </body>
     </html>
@@ -347,7 +419,7 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación con soporte CSV v3.5 número {i}",
+                "objeto": f"Licitación con soporte de webhooks v3.6 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -364,7 +436,6 @@ async def get_tenders(
 
     paginated_data = filtered_data[offset: offset + limit]
 
-    # Exportación en formato CSV si el usuario lo solicita
     if formato.lower() == "csv":
         csv_rows = ["id,objeto,organo_contratacion,estado,fecha_publicacion"]
         for t in paginated_data:
@@ -374,7 +445,7 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "3.5.0",
+        "version": "3.6.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
