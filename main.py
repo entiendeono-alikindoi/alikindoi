@@ -487,6 +487,14 @@ async def home_dashboard():
                         </div>
                     </div>
 
+                    <!-- Footer Informativo sobre Cookies -->
+                    <div class="text-center mt-5 pt-3 border-top border-secondary">
+                        <small class="text-muted">
+                            Este sitio utiliza únicamente cookies técnicas esenciales para su funcionamiento. Consulta nuestra 
+                            <a href="/terms" class="text-info text-decoration-none">Política de Cookies y Términos del Servicio</a>.
+                        </small>
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -597,6 +605,9 @@ async def terms_and_conditions():
 
             <h5 class="text-info mt-4">4. Política de Cancelación</h5>
             <p>El usuario puede cancelar su suscripción en cualquier momento. La cancelación surtirá efecto al finalizar el periodo de facturación ya pagado, sin reembolsos por periodos parciales.</p>
+
+            <h5 class="text-info mt-4">5. Política de Cookies</h5>
+            <p>Este servicio utiliza exclusivamente <strong>cookies técnicas estrictamente necesarias</strong> para la gestión de solicitudes, la seguridad de las claves de API y el correcto funcionamiento del dashboard. No empleamos cookies de rastreo, analíticas de terceros ni cookies con fines publicitarios o de perfilado.</p>
 
             <div class="mt-5">
                 <a href="/" class="btn btn-outline-primary btn-sm">&larr; Volver al Dashboard</a>
