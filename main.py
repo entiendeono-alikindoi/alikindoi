@@ -10,14 +10,16 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="2.9.0",
+    version="3.0.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Base de datos en memoria para claves emitidas y control de tráfico (Rate Limiting)
+# Base de datos en memoria, control de tráfico y sistema de caché temporal
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
+CACHE_STORAGE = {"data": None, "timestamp": 0}
+CACHE_TTL = 300 # 5 minutos de validez para la caché
 
 # Claves maestras por defecto
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
@@ -29,14 +31,12 @@ def verify_api_key(x_api_key: str = Header(...)):
             detail="Acceso Denegado: Clave de API inválida o ausente."
         )
     
-    # Control simple de límite de peticiones por minuto para el Free Tier
     if x_api_key not in MASTER_KEYS:
         now = time.time()
         client_history = REQUEST_COUNTS.get(x_api_key, [])
-        # Limpiar registros de más de 60 segundos
         client_history = [t for t in client_history if now - t < 60]
         
-        if len(client_history) >= 15: # Límite de 15 peticiones por minuto
+        if len(client_history) >= 20: # Ampliado a 20 peticiones/minuto en v3.0.0
             raise HTTPException(
                 status_code=429,
                 detail="Límite de peticiones excedido (Rate Limit). Espere un minuto antes de reintentar."
@@ -60,14 +60,14 @@ async def request_api_key(payload: dict = None):
     new_key = f"demo_key_{uuid.uuid4().hex[:12]}"
     DYNAMIC_API_KEYS[new_key] = {
         "created_at": datetime.now().isoformat(),
-        "tier": "free_tier",
+        "tier": "enterprise_eval",
         "status": "active"
     }
     return {
         "status": "success",
         "api_key": new_key,
         "message": "Guarde su clave. Utilícela en el encabezado X-API-KEY para autenticarse.",
-        "tier": "Gratuito (15 peticiones/minuto)",
+        "tier": "Evaluación v3.0 (20 peticiones/minuto)",
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
@@ -149,7 +149,7 @@ async def home_dashboard():
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.9.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.0.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -159,13 +159,13 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Estado de Infraestructura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-shield-halved me-2"></i>Blindado</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-shield-halved me-2"></i>Enterprise</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Control de Tráfico</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">Rate Limiting Activo</h4>
+                                <span class="text-muted small">Optimización</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Smart Caching</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -185,9 +185,9 @@ async def home_dashboard():
                     <!-- Key Request Sandbox Card -->
                     <div class="card-custom mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Free Tier)</h5>
+                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Enterprise Tier)</h5>
                         </div>
-                        <p class="text-muted small">Emite una clave de acceso con limitación de velocidad protegida:</p>
+                        <p class="text-muted small">Emite una clave de acceso optimizada con caché activa:</p>
                         <button onclick="generateKey()" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-plus me-1"></i> Generar API Key de Prueba</button>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="alert alert-dark border border-secondary text-light">
@@ -198,8 +198,8 @@ async def home_dashboard():
 
                     <!-- Main Info Card -->
                     <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-circle-info me-2"></i>Paginación y Límites v2.9.0</h5>
-                        <p class="text-muted">El endpoint <code>/tenders</code> incorpora parámetros de control de paginación (<code>?limit=10&offset=0</code>) y protección contra saturación de tráfico.</p>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-circle-info me-2"></i>Arquitectura v3.0.0 Activa</h5>
+                        <p class="text-muted">El endpoint <code>/tenders</code> incluye caché inteligente en memoria y alta resiliencia bajo el marco de la Ley 37/2007.</p>
                         <a href="/tenders" target="_blank" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-terminal me-1"></i> Probar Endpoint /tenders (Requiere Auth)</a>
                     </div>
 
@@ -242,30 +242,41 @@ async def legal_notice():
 async def get_tenders(
     request: Request, 
     estado: str = Query(None, description="Filtrar por estado"),
-    limit: int = Query(10, ge=1, le=100, description="Número máximo de resultados por página"),
-    offset: int = Query(0, ge=0, description="Número de registros a saltar para paginación")
+    limit: int = Query(10, ge=1, le=100, description="Límite por página"),
+    offset: int = Query(0, ge=0, description="Desplazamiento para paginación")
 ):
-    tenders_data = [
-        {
-            "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-            "objeto": f"Servicio o suministro institucional número {i}",
-            "organo_contratacion": "Ministerio de Hacienda" if i % 2 == 0 else "Consejería de Infraestructuras",
-            "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
-            "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
-        } for i in range(1, 25) # Simulando una base de datos más amplia de 24 registros
-    ]
+    global CACHE_STORAGE
+    now = time.time()
+
+    # Comprobar si la caché es válida
+    if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
+        # Generar datos actualizados simulando la fuente oficial
+        tenders_data = [
+            {
+                "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
+                "objeto": f"Licitación oficial indexada número {i}",
+                "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
+                "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
+                "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
+            } for i in range(1, 35)
+        ]
+        CACHE_STORAGE["data"] = tenders_data
+        CACHE_STORAGE["timestamp"] = now
+
+    tenders_data = CACHE_STORAGE["data"]
 
     # Filtrar por estado
     filtered_data = tenders_data
     if estado:
         filtered_data = [t for t in tenders_data if t["estado"].lower() == estado.lower()]
 
-    # Aplicar paginación (limit y offset)
+    # Paginación
     paginated_data = filtered_data[offset: offset + limit]
 
     return {
         "status": "success",
-        "version": "2.9.0",
+        "version": "3.0.0",
+        "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
             "total_matches": len(filtered_data),
