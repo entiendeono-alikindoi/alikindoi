@@ -10,14 +10,15 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.0.0",
+    version="3.1.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Base de datos en memoria, control de tráfico y sistema de caché temporal
+# Base de datos en memoria, control de tráfico, caché y registro de auditoría
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
+AUDIT_LOGS = []
 CACHE_STORAGE = {"data": None, "timestamp": 0}
 CACHE_TTL = 300 # 5 minutos de validez para la caché
 
@@ -25,18 +26,30 @@ CACHE_TTL = 300 # 5 minutos de validez para la caché
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
 
 def verify_api_key(x_api_key: str = Header(...)):
+    now = time.time()
+    
     if x_api_key not in MASTER_KEYS and x_api_key not in DYNAMIC_API_KEYS:
+        # Registrar intento fallido en auditoría
+        AUDIT_LOGS.insert(0, {
+            "timestamp": datetime.now().isoformat(),
+            "key_used": x_api_key[:6] + "..." if len(x_api_key) > 6 else "INVALID",
+            "status": "REJECTED (Unauthorized)"
+        })
         raise HTTPException(
             status_code=401, 
             detail="Acceso Denegado: Clave de API inválida o ausente."
         )
     
     if x_api_key not in MASTER_KEYS:
-        now = time.time()
         client_history = REQUEST_COUNTS.get(x_api_key, [])
         client_history = [t for t in client_history if now - t < 60]
         
-        if len(client_history) >= 20: # Ampliado a 20 peticiones/minuto en v3.0.0
+        if len(client_history) >= 20:
+            AUDIT_LOGS.insert(0, {
+                "timestamp": datetime.now().isoformat(),
+                "key_used": x_api_key[:6] + "...",
+                "status": "REJECTED (Rate Limit Exceeded)"
+            })
             raise HTTPException(
                 status_code=429,
                 detail="Límite de peticiones excedido (Rate Limit). Espere un minuto antes de reintentar."
@@ -44,6 +57,17 @@ def verify_api_key(x_api_key: str = Header(...)):
         
         client_history.append(now)
         REQUEST_COUNTS[x_api_key] = client_history
+
+    # Registrar acceso exitoso en auditoría
+    AUDIT_LOGS.insert(0, {
+        "timestamp": datetime.now().isoformat(),
+        "key_used": x_api_key[:6] + "..." if x_api_key not in MASTER_KEYS else "MASTER_KEY",
+        "status": "SUCCESS"
+    })
+    
+    # Mantener el log con un tamaño razonable (últimos 50 eventos)
+    if len(AUDIT_LOGS) > 50:
+        AUDIT_LOGS.pop()
 
     return x_api_key
 
@@ -67,13 +91,18 @@ async def request_api_key(payload: dict = None):
         "status": "success",
         "api_key": new_key,
         "message": "Guarde su clave. Utilícela en el encabezado X-API-KEY para autenticarse.",
-        "tier": "Evaluación v3.0 (20 peticiones/minuto)",
+        "tier": "Evaluación v3.1 (20 peticiones/minuto)",
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
-    return """
+    # Renderizar los últimos logs en formato HTML para visibilidad directa
+    logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if 'SUCCESS' in log['status'] else 'danger'}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:10]])
+    if not logs_html:
+        logs_html = "<tr><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
+
+    return f"""
     <!DOCTYPE html>
     <html lang="es">
     <head>
@@ -83,7 +112,7 @@ async def home_dashboard():
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
-            :root {
+            :root {{
                 --bg-main: #0b0f19;
                 --bg-card: #151c2c;
                 --text-main: #f3f4f6;
@@ -91,41 +120,42 @@ async def home_dashboard():
                 --accent-blue: #3b82f6;
                 --accent-green: #10b981;
                 --border-color: #1f293d;
-            }
-            body {
+            }}
+            body {{
                 background-color: var(--bg-main);
                 color: var(--text-main);
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            }
-            .sidebar {
+            }}
+            .sidebar {{
                 background-color: #0f172a;
                 border-right: 1px solid var(--border-color);
                 min-height: 100vh;
-            }
-            .sidebar .nav-link {
+            }}
+            .sidebar .nav-link {{
                 color: var(--text-muted);
                 padding: 12px 20px;
                 font-weight: 500;
-            }
-            .sidebar .nav-link.active, .sidebar .nav-link:hover {
+            }}
+            .sidebar .nav-link.active, .sidebar .nav-link:hover {{
                 color: #ffffff;
                 background-color: var(--bg-card);
                 border-left: 3px solid var(--accent-blue);
-            }
-            .card-custom {
+            }}
+            .card-custom {{
                 background-color: var(--bg-card);
                 border: 1px solid var(--border-color);
                 border-radius: 10px;
                 padding: 20px;
-            }
-            .badge-status {
+            }}
+            .badge-status {{
                 background-color: rgba(16, 185, 129, 0.1);
                 color: var(--accent-green);
                 border: 1px solid var(--accent-green);
                 padding: 4px 10px;
                 border-radius: 20px;
                 font-size: 0.8rem;
-            }
+            }}
+            table {{ color: var(--text-main) !important; }}
         </style>
     </head>
     <body>
@@ -149,7 +179,7 @@ async def home_dashboard():
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.0.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.1.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -159,7 +189,7 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Estado de Infraestructura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-shield-halved me-2"></i>Enterprise</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-shield-halved me-2"></i>Auditado</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -187,7 +217,7 @@ async def home_dashboard():
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Enterprise Tier)</h5>
                         </div>
-                        <p class="text-muted small">Emite una clave de acceso optimizada con caché activa:</p>
+                        <p class="text-muted small">Emite una clave de acceso auditada en tiempo real:</p>
                         <button onclick="generateKey()" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-plus me-1"></i> Generar API Key de Prueba</button>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="alert alert-dark border border-secondary text-light">
@@ -196,11 +226,24 @@ async def home_dashboard():
                         </div>
                     </div>
 
-                    <!-- Main Info Card -->
+                    <!-- Audit Logs Table Card -->
                     <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-circle-info me-2"></i>Arquitectura v3.0.0 Activa</h5>
-                        <p class="text-muted">El endpoint <code>/tenders</code> incluye caché inteligente en memoria y alta resiliencia bajo el marco de la Ley 37/2007.</p>
-                        <a href="/tenders" target="_blank" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-terminal me-1"></i> Probar Endpoint /tenders (Requiere Auth)</a>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría de Tráfico en Tiempo Real (v3.1.0)</h5>
+                        <p class="text-muted small">Últimos accesos registrados a los endpoints protegidos de la pasarela:</p>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Marca Temporal</th>
+                                        <th>Clave (Identificador)</th>
+                                        <th>Estado de Petición</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {logs_html}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                 </div>
@@ -208,18 +251,18 @@ async def home_dashboard():
         </div>
 
         <script>
-            async function generateKey() {
-                try {
-                    const res = await fetch('/request-key', { method: 'POST' });
+            async function generateKey() {{
+                try {{
+                    const res = await fetch('/request-key', {{ method: 'POST' }});
                     const data = await res.json();
-                    if (data.api_key) {
+                    if (data.api_key) {{
                         document.getElementById('generatedKey').innerText = data.api_key;
                         document.getElementById('keyDisplay').style.display = 'block';
-                    }
-                } catch (e) {
+                    }}
+                }} catch (e) {{
                     alert('Error generando la clave.');
-                }
-            }
+                }}
+            }}
         </script>
     </body>
     </html>
@@ -248,9 +291,7 @@ async def get_tenders(
     global CACHE_STORAGE
     now = time.time()
 
-    # Comprobar si la caché es válida
     if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
-        # Generar datos actualizados simulando la fuente oficial
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
@@ -265,17 +306,15 @@ async def get_tenders(
 
     tenders_data = CACHE_STORAGE["data"]
 
-    # Filtrar por estado
     filtered_data = tenders_data
     if estado:
         filtered_data = [t for t in tenders_data if t["estado"].lower() == estado.lower()]
 
-    # Paginación
     paginated_data = filtered_data[offset: offset + limit]
 
     return {
         "status": "success",
-        "version": "3.0.0",
+        "version": "3.1.0",
         "cache_status": "hit",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
         "pagination": {
