@@ -10,17 +10,17 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="3.1.0",
+    version="3.2.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Base de datos en memoria, control de tráfico, caché y registro de auditoría
+# Base de datos en memoria, control de tráfico, caché y auditoría comercial
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
 CACHE_STORAGE = {"data": None, "timestamp": 0}
-CACHE_TTL = 300 # 5 minutos de validez para la caché
+CACHE_TTL = 300
 
 # Claves maestras por defecto
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
@@ -29,7 +29,6 @@ def verify_api_key(x_api_key: str = Header(...)):
     now = time.time()
     
     if x_api_key not in MASTER_KEYS and x_api_key not in DYNAMIC_API_KEYS:
-        # Registrar intento fallido en auditoría
         AUDIT_LOGS.insert(0, {
             "timestamp": datetime.now().isoformat(),
             "key_used": x_api_key[:6] + "..." if len(x_api_key) > 6 else "INVALID",
@@ -40,32 +39,34 @@ def verify_api_key(x_api_key: str = Header(...)):
             detail="Acceso Denegado: Clave de API inválida o ausente."
         )
     
+    # Determinar límites según el plan (Tier) de la clave
+    tier = "enterprise" if x_api_key in MASTER_KEYS else DYNAMIC_API_KEYS.get(x_api_key, {}).get("tier", "free")
+    limit_rate = 60 if tier == "enterprise" else 20 # 60 req/min para Enterprise, 20 para Free
+
     if x_api_key not in MASTER_KEYS:
         client_history = REQUEST_COUNTS.get(x_api_key, [])
         client_history = [t for t in client_history if now - t < 60]
         
-        if len(client_history) >= 20:
+        if len(client_history) >= limit_rate:
             AUDIT_LOGS.insert(0, {
                 "timestamp": datetime.now().isoformat(),
                 "key_used": x_api_key[:6] + "...",
-                "status": "REJECTED (Rate Limit Exceeded)"
+                "status": f"REJECTED (Rate Limit Tier: {tier})"
             })
             raise HTTPException(
                 status_code=429,
-                detail="Límite de peticiones excedido (Rate Limit). Espere un minuto antes de reintentar."
+                detail=f"Límite de peticiones excedido para el plan {tier}. Espere un minuto."
             )
         
         client_history.append(now)
         REQUEST_COUNTS[x_api_key] = client_history
 
-    # Registrar acceso exitoso en auditoría
     AUDIT_LOGS.insert(0, {
         "timestamp": datetime.now().isoformat(),
         "key_used": x_api_key[:6] + "..." if x_api_key not in MASTER_KEYS else "MASTER_KEY",
-        "status": "SUCCESS"
+        "status": f"SUCCESS ({tier.upper()})"
     })
     
-    # Mantener el log con un tamaño razonable (últimos 50 eventos)
     if len(AUDIT_LOGS) > 50:
         AUDIT_LOGS.pop()
 
@@ -81,23 +82,25 @@ async def custom_swagger_ui_html():
 
 @app.post("/request-key")
 async def request_api_key(payload: dict = None):
-    new_key = f"demo_key_{uuid.uuid4().hex[:12]}"
+    # Permite elegir el plan al solicitar la clave (por defecto 'free')
+    plan_requested = payload.get("tier", "free") if payload else "free"
+    new_key = f"key_{plan_requested}_{uuid.uuid4().hex[:10]}"
+    
     DYNAMIC_API_KEYS[new_key] = {
         "created_at": datetime.now().isoformat(),
-        "tier": "enterprise_eval",
+        "tier": plan_requested,
         "status": "active"
     }
     return {
         "status": "success",
         "api_key": new_key,
-        "message": "Guarde su clave. Utilícela en el encabezado X-API-KEY para autenticarse.",
-        "tier": "Evaluación v3.1 (20 peticiones/minuto)",
+        "tier": plan_requested.upper(),
+        "message": f"Clave emitida bajo el plan {plan_requested.upper()}. Utilícela en el encabezado X-API-KEY.",
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home_dashboard():
-    # Renderizar los últimos logs en formato HTML para visibilidad directa
     logs_html = "".join([f"<tr><td>{log['timestamp']}</td><td><code>{log['key_used']}</code></td><td><span class='badge bg-{'success' if 'SUCCESS' in log['status'] else 'danger'}'>{log['status']}</span></td></tr>" for log in AUDIT_LOGS[:10]])
     if not logs_html:
         logs_html = "<tr><td colspan='3' class='text-muted text-center'>No hay registros de auditoría recientes.</td></tr>"
@@ -175,11 +178,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel de Control de Licitaciones</h3>
+                            <h3 class="fw-bold m-0">Panel de Control Comercial</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.1.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v3.2.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -188,8 +191,8 @@ async def home_dashboard():
                     <div class="row g-3 mb-4">
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Estado de Infraestructura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-shield-halved me-2"></i>Auditado</h4>
+                                <span class="text-muted small">Modelo Comercial</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-tags me-2"></i>Multi-Tier SaaS</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -212,31 +215,33 @@ async def home_dashboard():
                         </div>
                     </div>
 
-                    <!-- Key Request Sandbox Card -->
+                    <!-- Commercial Plan Request Card -->
                     <div class="card-custom mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Enterprise Tier)</h5>
+                            <h5 class="fw-bold m-0"><i class="fa-solid fa-cart-shopping me-2"></i>Activador Comercial de Claves</h5>
                         </div>
-                        <p class="text-muted small">Emite una clave de acceso auditada en tiempo real:</p>
-                        <button onclick="generateKey()" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-plus me-1"></i> Generar API Key de Prueba</button>
+                        <p class="text-muted small">Selecciona el plan comercial a emitir:</p>
+                        <div class="mb-3">
+                            <button onclick="generateKey('free')" class="btn btn-outline-secondary btn-sm me-2"><i class="fa-solid fa-user me-1"></i> Plan Free (20 req/min)</button>
+                            <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> Plan Pro / Enterprise (60 req/min)</button>
+                        </div>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="alert alert-dark border border-secondary text-light">
-                                <strong>Tu API Key:</strong> <code id="generatedKey" class="text-warning"></code>
+                                <strong>Clave Generada (<span id="planLabel" class="text-info"></span>):</strong> <code id="generatedKey" class="text-warning"></code>
                             </div>
                         </div>
                     </div>
 
                     <!-- Audit Logs Table Card -->
                     <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría de Tráfico en Tiempo Real (v3.1.0)</h5>
-                        <p class="text-muted small">Últimos accesos registrados a los endpoints protegidos de la pasarela:</p>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-list-check me-2"></i>Auditoría Comercial y de Tráfico (v3.2.0)</h5>
                         <div class="table-responsive">
                             <table class="table table-dark table-striped table-sm align-middle">
                                 <thead>
                                     <tr>
                                         <th>Marca Temporal</th>
                                         <th>Clave (Identificador)</th>
-                                        <th>Estado de Petición</th>
+                                        <th>Estado / Plan</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -251,16 +256,21 @@ async def home_dashboard():
         </div>
 
         <script>
-            async function generateKey() {{
+            async function generateKey(tier) {{
                 try {{
-                    const res = await fetch('/request-key', {{ method: 'POST' }});
+                    const res = await fetch('/request-key', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ tier: tier }})
+                    }});
                     const data = await res.json();
                     if (data.api_key) {{
                         document.getElementById('generatedKey').innerText = data.api_key;
+                        document.getElementById('planLabel').innerText = data.tier;
                         document.getElementById('keyDisplay').style.display = 'block';
                     }}
                 }} catch (e) {{
-                    alert('Error generando la clave.');
+                    alert('Error generando la clave comercial.');
                 }}
             }}
         </script>
@@ -272,55 +282,4 @@ async def home_dashboard():
 async def legal_notice():
     return """
     <html>
-        <body style="font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #0b0f19; color: #f3f4f6;">
-            <h2>Aviso Legal y Limitación de Responsabilidad</h2>
-            <p>Este servicio opera bajo el amparo de la <strong>Ley 37/2007</strong> sobre reutilización de la información del sector público.</p>
-            <p>El proveedor de esta API actúa como mero agregador tecnológico y de índice, no otorga derechos de propiedad intelectual, no garantiza la inalterabilidad o exactitud de los datos originales institucionales (PLACSP), y queda totalmente exento de responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales.</p>
-            <p><a href="/" style="color: #3b82f6;">Volver al Dashboard</a></p>
-        </body>
-    </html>
-    """
-
-@app.get("/tenders", dependencies=[Depends(verify_api_key)])
-async def get_tenders(
-    request: Request, 
-    estado: str = Query(None, description="Filtrar por estado"),
-    limit: int = Query(10, ge=1, le=100, description="Límite por página"),
-    offset: int = Query(0, ge=0, description="Desplazamiento para paginación")
-):
-    global CACHE_STORAGE
-    now = time.time()
-
-    if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
-        tenders_data = [
-            {
-                "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación oficial indexada número {i}",
-                "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
-                "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
-                "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
-            } for i in range(1, 35)
-        ]
-        CACHE_STORAGE["data"] = tenders_data
-        CACHE_STORAGE["timestamp"] = now
-
-    tenders_data = CACHE_STORAGE["data"]
-
-    filtered_data = tenders_data
-    if estado:
-        filtered_data = [t for t in tenders_data if t["estado"].lower() == estado.lower()]
-
-    paginated_data = filtered_data[offset: offset + limit]
-
-    return {
-        "status": "success",
-        "version": "3.1.0",
-        "cache_status": "hit",
-        "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
-        "pagination": {
-            "total_matches": len(filtered_data),
-            "limit": limit,
-            "offset": offset
-        },
-        "data": paginated_data
-    }
+        <body style="font-family: sans-serif; padding:
