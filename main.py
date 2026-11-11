@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 import requests
 from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
@@ -9,13 +10,14 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP)",
     description="Infraestructura de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007.",
-    version="2.8.0",
+    version="2.9.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Base de datos en memoria para claves emitidas dinámicamente
+# Base de datos en memoria para claves emitidas y control de tráfico (Rate Limiting)
 DYNAMIC_API_KEYS = {}
+REQUEST_COUNTS = {}
 
 # Claves maestras por defecto
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
@@ -26,6 +28,23 @@ def verify_api_key(x_api_key: str = Header(...)):
             status_code=401, 
             detail="Acceso Denegado: Clave de API inválida o ausente."
         )
+    
+    # Control simple de límite de peticiones por minuto para el Free Tier
+    if x_api_key not in MASTER_KEYS:
+        now = time.time()
+        client_history = REQUEST_COUNTS.get(x_api_key, [])
+        # Limpiar registros de más de 60 segundos
+        client_history = [t for t in client_history if now - t < 60]
+        
+        if len(client_history) >= 15: # Límite de 15 peticiones por minuto
+            raise HTTPException(
+                status_code=429,
+                detail="Límite de peticiones excedido (Rate Limit). Espere un minuto antes de reintentar."
+            )
+        
+        client_history.append(now)
+        REQUEST_COUNTS[x_api_key] = client_history
+
     return x_api_key
 
 @app.get("/docs", include_in_schema=False)
@@ -48,7 +67,7 @@ async def request_api_key(payload: dict = None):
         "status": "success",
         "api_key": new_key,
         "message": "Guarde su clave. Utilícela en el encabezado X-API-KEY para autenticarse.",
-        "tier": "Gratuito (Evaluación)",
+        "tier": "Gratuito (15 peticiones/minuto)",
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007 de Reutilización de la Información del Sector Público."
     }
 
@@ -130,7 +149,7 @@ async def home_dashboard():
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.8.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v2.9.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -145,8 +164,8 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Autenticación</span>
-                                <h4 class="fw-bold mt-2 mb-0">X-API-KEY Dinámica</h4>
+                                <span class="text-muted small">Control de Tráfico</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-info">Rate Limiting Activo</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -168,7 +187,7 @@ async def home_dashboard():
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2"></i>Generador Instantáneo de API Key (Free Tier)</h5>
                         </div>
-                        <p class="text-muted small">Emite una clave de acceso inmediata para consultar los endpoints protegidos:</p>
+                        <p class="text-muted small">Emite una clave de acceso con limitación de velocidad protegida:</p>
                         <button onclick="generateKey()" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-plus me-1"></i> Generar API Key de Prueba</button>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="alert alert-dark border border-secondary text-light">
@@ -179,8 +198,8 @@ async def home_dashboard():
 
                     <!-- Main Info Card -->
                     <div class="card-custom mb-4">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-circle-info me-2"></i>Filtrado Avanzado v2.8.0</h5>
-                        <p class="text-muted">El endpoint <code>/tenders</code> ahora soporta parámetros opcionales de filtrado por estado (ej. <code>?estado=En Plazo</code>) manteniendo estrictamente la neutralidad y el amparo de la Ley 37/2007.</p>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-circle-info me-2"></i>Paginación y Límites v2.9.0</h5>
+                        <p class="text-muted">El endpoint <code>/tenders</code> incorpora parámetros de control de paginación (<code>?limit=10&offset=0</code>) y protección contra saturación de tráfico.</p>
                         <a href="/tenders" target="_blank" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-terminal me-1"></i> Probar Endpoint /tenders (Requiere Auth)</a>
                     </div>
 
@@ -220,34 +239,38 @@ async def legal_notice():
     """
 
 @app.get("/tenders", dependencies=[Depends(verify_api_key)])
-async def get_tenders(request: Request, estado: str = Query(None, description="Filtrar por estado de la licitación (ej. En Plazo, Adjudicado)")):
+async def get_tenders(
+    request: Request, 
+    estado: str = Query(None, description="Filtrar por estado"),
+    limit: int = Query(10, ge=1, le=100, description="Número máximo de resultados por página"),
+    offset: int = Query(0, ge=0, description="Número de registros a saltar para paginación")
+):
     tenders_data = [
         {
-            "id": "PLACSP-ES-2026-001",
-            "objeto": "Servicio de mantenimiento y desarrollo de software institucional",
-            "organo_contratacion": "Ministerio de Hacienda",
-            "estado": "En Plazo",
-            "fecha_publicacion": "2026-11-01"
-        },
-        {
-            "id": "PLACSP-ES-2026-002",
-            "objeto": "Suministro de licencias de infraestructura Cloud securizada",
-            "organo_contratacion": "Consejería de Infraestructuras",
-            "estado": "Adjudicado",
-            "fecha_publicacion": "2026-11-05"
-        }
+            "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
+            "objeto": f"Servicio o suministro institucional número {i}",
+            "organo_contratacion": "Ministerio de Hacienda" if i % 2 == 0 else "Consejería de Infraestructuras",
+            "estado": "En Plazo" if i % 2 == 0 else "Adjudicado",
+            "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
+        } for i in range(1, 25) # Simulando una base de datos más amplia de 24 registros
     ]
 
-    # Aplicar filtrado neutro si se especifica el parámetro
+    # Filtrar por estado
     filtered_data = tenders_data
     if estado:
         filtered_data = [t for t in tenders_data if t["estado"].lower() == estado.lower()]
 
+    # Aplicar paginación (limit y offset)
+    paginated_data = filtered_data[offset: offset + limit]
+
     return {
         "status": "success",
-        "version": "2.8.0",
+        "version": "2.9.0",
         "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
-        "filter_applied": estado if estado else "none",
-        "count": len(filtered_data),
-        "data": filtered_data
+        "pagination": {
+            "total_matches": len(filtered_data),
+            "limit": limit,
+            "offset": offset
+        },
+        "data": paginated_data
     }
