@@ -1,5 +1,4 @@
 import os
-import requests
 from fastapi import FastAPI, Header, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -12,7 +11,6 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Claves de API válidas
 VALID_API_KEYS = os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(",")
 
 def verify_api_key(x_api_key: str = Header(...)):
