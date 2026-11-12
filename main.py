@@ -10,12 +10,11 @@ from fastapi.openapi.docs import get_swagger_ui_html
 app = FastAPI(
     title="API de Contratación Pública (PLACSP) - Enterprise SaaS",
     description="Infraestructura comercial de datos de licitaciones públicas oficiales bajo amparo de la Ley 37/2007 con alta resiliencia, caché, control de tráfico y analíticas en tiempo real.",
-    version="4.0.0",
+    version="4.1.0",
     docs_url=None,
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Enterprise v4.0.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -86,16 +85,15 @@ async def custom_swagger_ui_html():
 
 @app.get("/health", include_in_schema=True)
 async def health_check():
-    """Endpoint público de control de salud Enterprise."""
     uptime_seconds = int(time.time() - START_TIME)
     return {
         "status": "healthy",
-        "version": "4.0.0",
+        "version": "4.1.0",
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
         "webhooks_registered": len(REGISTERED_WEBHOOKS),
         "timestamp": datetime.now().isoformat(),
-        "legal_notice": "Servicio operando bajo la Ley 37/2007 de Reutilización de la Información del Sector Público."
+        "legal_notice": "Servicio operando bajo la Ley 37/2007 de Reutilización de la Información del Sector Público y RGPD."
     }
 
 @app.post("/request-key")
@@ -112,7 +110,7 @@ async def request_api_key(payload: dict = None):
         "status": "success",
         "api_key": new_key,
         "tier": plan_requested.upper(),
-        "message": f"Clave Enterprise emitida bajo el plan {plan_requested.upper()}. Utilícela en el encabezado X-API-KEY.",
+        "message": f"Clave emitida bajo el plan {plan_requested.upper()}. Utilícela en el encabezado X-API-KEY.",
         "legal_notice": "Datos obtenidos al amparo de la Ley 37/2007."
     }
 
@@ -131,7 +129,7 @@ async def register_webhook(payload: dict):
     return {
         "status": "success",
         "webhook_id": hook_id,
-        "message": "Webhook registrado correctamente para alertas de licitaciones."
+        "message": "Webhook registrado correctamente."
     }
 
 @app.post("/webhooks/test", dependencies=[Depends(verify_api_key)])
@@ -143,11 +141,7 @@ async def test_webhook(payload: dict):
     for wh in REGISTERED_WEBHOOKS:
         results.append({"webhook_id": wh["id"], "url": wh["url"], "delivery_status": "simulated_success"})
             
-    return {
-        "status": "success",
-        "dispatched_count": len(results),
-        "details": results
-    }
+    return {"status": "success", "dispatched_count": len(results), "details": results}
 
 @app.get("/analytics/summary", dependencies=[Depends(verify_api_key)])
 async def analytics_summary():
@@ -157,7 +151,7 @@ async def analytics_summary():
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación Enterprise v4.0 número {i}",
+                "objeto": f"Licitación Enterprise v4.1 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -177,7 +171,7 @@ async def analytics_summary():
 
     return {
         "status": "success",
-        "version": "4.0.0",
+        "version": "4.1.0",
         "total_tenders": len(tenders),
         "by_state": states_count,
         "by_organ": orgs_count,
@@ -195,7 +189,7 @@ async def search_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación Enterprise v4.0 número {i}",
+                "objeto": f"Licitación Enterprise v4.1 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -212,7 +206,7 @@ async def search_tenders(
 
     return {
         "status": "success",
-        "version": "4.0.0",
+        "version": "4.1.0",
         "query": q,
         "filter_organ": organo,
         "matches_count": len(results),
@@ -251,6 +245,7 @@ async def home_dashboard():
                 --text-muted: #9ca3af;
                 --accent-blue: #3b82f6;
                 --accent-green: #10b981;
+                --accent-pro: #f59e0b;
                 --border-color: #1f293d;
             }}
             body {{
@@ -287,6 +282,43 @@ async def home_dashboard():
                 border-radius: 20px;
                 font-size: 0.8rem;
             }}
+            /* Estilos específicos de distinción de planes */
+            .btn-plan-free {{
+                background-color: #334155;
+                color: #f8fafc;
+                border: 1px solid #475569;
+            }}
+            .btn-plan-free:hover {{
+                background-color: #475569;
+                color: #ffffff;
+            }}
+            .btn-plan-pro {{
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                color: #ffffff;
+                border: none;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+            }}
+            .btn-plan-pro:hover {{
+                background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+                color: #ffffff;
+            }}
+            /* Banner de Cookies RGPD */
+            #cookie-banner {{
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background-color: #1e293b;
+                border-top: 1px solid #334155;
+                color: #f1f5f9;
+                padding: 15px 25px;
+                z-index: 9999;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            }}
             table {{ color: var(--text-main) !important; }}
         </style>
     </head>
@@ -300,7 +332,7 @@ async def home_dashboard():
                         <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i>Dashboard</a></li>
                         <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i>Swagger Consola</a></li>
                         <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i>Health Check</a></li>
-                        <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Marco Legal</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Aviso Legal y Privacidad</a></li>
                     </ul>
                 </div>
 
@@ -308,11 +340,11 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0">Panel Enterprise SaaS v4.0</h3>
+                            <h3 class="fw-bold m-0">Panel Enterprise SaaS v4.1</h3>
                             <p class="text-muted m-0 small">Infraestructura oficial de datos de la Contratación Pública Española</p>
                         </div>
                         <div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v4.0.0</span>
+                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v4.1.0</span>
                             <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
@@ -322,13 +354,13 @@ async def home_dashboard():
                         <div class="col-md-3">
                             <div class="card-custom">
                                 <span class="text-muted small">Estado del Sistema</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-circle-check me-2"></i>Enterprise Ready</h4>
+                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-circle-check me-2"></i>RGPD & Ley 37/2007</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v4.0 Consolidada</h4>
+                                <span class="text-muted small">Interfaz</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-warning">Colores Pro Destacados</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -339,25 +371,25 @@ async def home_dashboard():
                         </div>
                         <div class="col-md-3">
                             <div class="card-custom">
-                                <span class="text-muted small">Conformidad Legal</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-warning">Ley 37/2007</h4>
+                                <span class="text-muted small">Seguridad</span>
+                                <h4 class="fw-bold mt-2 mb-0 text-primary">Cifrado & Auditoría</h4>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Commercial Plan Request Card -->
+                    <!-- Commercial Plan Request Card with Clear Color Distinction -->
                     <div class="card-custom mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold m-0"><i class="fa-solid fa-cart-shopping me-2"></i>Activador Comercial de Claves</h5>
                         </div>
                         <p class="text-muted small">Selecciona el plan comercial a emitir:</p>
-                        <div class="mb-3">
-                            <button onclick="generateKey('free')" class="btn btn-outline-secondary btn-sm me-2"><i class="fa-solid fa-user me-1"></i> Plan Free (20 req/min)</button>
-                            <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> Plan Pro / Enterprise (100 req/min)</button>
+                        <div class="mb-3 d-flex gap-2">
+                            <button onclick="generateKey('free')" class="btn btn-plan-free btn-sm px-3 py-2"><i class="fa-solid fa-user me-1"></i> Plan Free (20 req/min)</button>
+                            <button onclick="generateKey('pro')" class="btn btn-plan-pro btn-sm px-4 py-2"><i class="fa-solid fa-crown me-1 text-warning"></i> Plan Pro / Enterprise (100 req/min)</button>
                         </div>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="alert alert-dark border border-secondary text-light">
-                                <strong>Clave Generada (<span id="planLabel" class="text-info"></span>):</strong> <code id="generatedKey" class="text-warning"></code>
+                                <strong>Clave Generada (<span id="planLabel" class="text-warning"></span>):</strong> <code id="generatedKey" class="text-info"></code>
                             </div>
                         </div>
                     </div>
@@ -430,7 +462,26 @@ async def home_dashboard():
             </div>
         </div>
 
+        <!-- Banner de Cookies Legal (RGPD) -->
+        <div id="cookie-banner">
+            <div style="max-width: 800px; font-size: 0.9rem;">
+                <i class="fa-solid fa-cookie-bite text-warning me-2"></i>Utilizamos cookies técnicas y de sesión estrictamente necesarias para el funcionamiento de la plataforma y la emisión segura de claves API bajo el amparo de la <a href="/legal" style="color: #60a5fa;" target="_blank">Ley 37/2007</a>. Al continuar navegando, acepta su uso.
+            </div>
+            <div>
+                <button onclick="acceptCookies()" class="btn btn-warning btn-sm fw-bold px-3">Aceptar y Continuar</button>
+            </div>
+        </div>
+
         <script>
+            // Gestión de cookies en localStorage
+            if (localStorage.getItem('cookies_accepted') === 'true') {{
+                document.getElementById('cookie-banner').style.display = 'none';
+            }}
+            function acceptCookies() {{
+                localStorage.setItem('cookies_accepted', 'true');
+                document.getElementById('cookie-banner').style.display = 'none';
+            }}
+
             async function generateKey(tier) {{
                 try {{
                     const res = await fetch('/request-key', {{
@@ -481,11 +532,27 @@ async def home_dashboard():
 async def legal_notice():
     return """
     <html>
-        <body style="font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #0b0f19; color: #f3f4f6;">
-            <h2>Aviso Legal y Limitación de Responsabilidad</h2>
-            <p>Este servicio opera bajo el amparo de la <strong>Ley 37/2007</strong> sobre reutilización de la información del sector público.</p>
-            <p>El proveedor de esta API actúa como mero agregador tecnológico y de índice, no otorga derechos de propiedad intelectual, no garantiza la inalterabilidad o exactitud de los datos originales institucionales (PLACSP), y queda totalmente exento de responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales.</p>
-            <p><a href="/" style="color: #3b82f6;">Volver al Dashboard</a></p>
+        <head>
+            <title>Aviso Legal y Política de Cookies - PLACSP SaaS</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body style="font-family: 'Segoe UI', sans-serif; padding: 40px; line-height: 1.6; background-color: #0b0f19; color: #f3f4f6;">
+            <div class="container" style="max-width: 800px;">
+                <h1 class="mb-4 text-warning">Aviso Legal, Privacidad y Política de Cookies</h1>
+                
+                <h3 class="mt-4 text-info">1. Objeto y Titularidad</h3>
+                <p>Este servicio web opera como una infraestructura tecnológica de agregación y consulta optimizada de datos públicos procedentes de la Plataforma de Contratación del Sector Público (PLACSP), amparado legalmente bajo la <strong>Ley 37/2007</strong> sobre reutilización de la información del sector público.</p>
+
+                <h3 class="mt-4 text-info">2. Exención de Responsabilidad</h3>
+                <p>El proveedor de esta API actúa como mero intermediario tecnológico. No garantizamos la exactitud, inalterabilidad o disponibilidad continua de los datos originales publicados por los órganos de contratación estatales, quedando exentos de cualquier responsabilidad por daños derivados de interrupciones o inexactitudes en la fuente original.</p>
+
+                <h3 class="mt-4 text-info">3. Política de Cookies (RGPD y LSSI-CE)</h3>
+                <p>Este sitio web utiliza exclusivamente <strong>cookies técnicas esenciales</strong> para la gestión de sesiones de usuario, autenticación mediante API Key y persistencia de preferencias de navegación (como el estado de aceptación de este aviso). No se emplean cookies publicitarias ni de rastreo comercial de terceros sin consentimiento previo.</p>
+                
+                <div class="mt-5">
+                    <a href="/" class="btn btn-primary"><i class="fa-solid fa-arrow-left me-2"></i>Volver al Dashboard Enterprise</a>
+                </div>
+            </div>
         </body>
     </html>
     """
@@ -505,7 +572,7 @@ async def get_tenders(
         tenders_data = [
             {
                 "id": f"PLACSP-ES-2026-{str(i).zfill(3)}",
-                "objeto": f"Licitación Enterprise v4.0 número {i}",
+                "objeto": f"Licitación Enterprise v4.1 número {i}",
                 "organo_contratacion": "Ministerio de Asuntos Económicos" if i % 2 == 0 else "Ministerio de Hacienda",
                 "estado": "En Plazo" if i % 3 == 0 else ("Adjudicado" if i % 3 == 1 else "Pendiente"),
                 "fecha_publicacion": f"2026-11-{str(i).zfill(2)}"
@@ -531,9 +598,9 @@ async def get_tenders(
 
     return {
         "status": "success",
-        "version": "4.0.0",
+        "version": "4.1.0",
         "cache_status": "hit",
-        "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007. Actuamos como mero agregador tecnológico exento de responsabilidad sobre los datos originales.",
+        "legal_notice": "AVISO LEGAL: Datos obtenidos de fuentes abiertas institucionales (PLACSP) al amparo de la Ley 37/2007.",
         "pagination": {
             "total_matches": len(filtered_data),
             "limit": limit,
