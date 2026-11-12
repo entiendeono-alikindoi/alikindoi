@@ -269,7 +269,7 @@ async def home_dashboard():
 
     return f"""
     <!DOCTYPE html>
-    <html lang="es" id="htmlRoot">
+    <html lang="es" id="htmlRoot" translate="no">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -684,7 +684,7 @@ async def home_dashboard():
 async def legal_notice():
     return f"""
     <!DOCTYPE html>
-    <html lang="es" id="legalRoot">
+    <html lang="es" id="legalRoot" translate="no">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -745,7 +745,7 @@ async def legal_notice():
 async def terms_and_conditions():
     return f"""
     <!DOCTYPE html>
-    <html lang="es" id="termsRoot">
+    <html lang="es" id="termsRoot" translate="no">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
