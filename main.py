@@ -398,11 +398,11 @@ async def home_dashboard():
                         </div>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
                             <div class="p-3 rounded d-flex justify-content-between align-items-center" style="background-color: #0b0f19; border: 1px solid #3b82f6;">
-                                <div>
+                                <div style="overflow: hidden; padding-right: 15px;">
                                     <span class="text-light small d-block mb-1"><span data-i18n="lbl_gen_key">Clave Generada</span> (<strong id="planLabel" class="text-info"></strong>):</span>
-                                    <code id="generatedKey" class="fs-5 fw-bold" style="color: #38bdf8; letter-spacing: 0.5px;"></code>
+                                    <code id="generatedKey" class="fs-6 fw-bold text-warning text-break" style="letter-spacing: 0.5px; display: inline-block; word-break: break-all;"></code>
                                 </div>
-                                <button onclick="copyGeneratedKey()" class="btn btn-primary btn-sm" id="btnCopyKey">
+                                <button onclick="copyGeneratedKey()" class="btn btn-primary btn-sm flex-shrink-0" id="btnCopyKey">
                                     <i class="fa-regular fa-copy me-1"></i> <span data-i18n="btn_copy">Copiar</span>
                                 </button>
                             </div>
