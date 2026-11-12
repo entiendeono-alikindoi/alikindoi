@@ -17,7 +17,6 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Estructuras de datos para la versión Release Candidate v5.0.0
 DYNAMIC_API_KEYS = {}
 REQUEST_COUNTS = {}
 AUDIT_LOGS = []
@@ -31,7 +30,6 @@ START_TIME = time.time()
 MASTER_KEYS = set(os.getenv("API_KEYS", "clave_demo_123,super_secret_key_456").split(","))
 
 def fetch_real_placsp_tenders():
-    """Conector oficial con la PLACSP con respaldo (fallback) ante interrupciones institucionales."""
     try:
         url = "https://contrataciondelestado.es/sindicacion/sindicacion64?format=json"
         response = requests.get(url, timeout=4)
@@ -283,7 +281,7 @@ async def home_dashboard():
                 --bg-main: #0b0f19;
                 --bg-card: #151c2c;
                 --text-main: #f3f4f6;
-                --text-muted: #9ca3af;
+                --text-muted: #cbd5e1;
                 --accent-blue: #3b82f6;
                 --accent-green: #10b981;
                 --border-color: #1f293d;
@@ -323,6 +321,7 @@ async def home_dashboard():
                 font-size: 0.8rem;
             }}
             table {{ color: var(--text-main) !important; }}
+            .text-muted {{ color: #cbd5e1 !important; }}
         </style>
     </head>
     <body>
@@ -397,8 +396,14 @@ async def home_dashboard():
                             <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> <span data-i18n="btn_pro">Plan Pro / Enterprise (100 req/min)</span></button>
                         </div>
                         <div id="keyDisplay" class="mt-3" style="display:none;">
-                            <div class="alert alert-dark border border-secondary text-light">
-                                <strong><span data-i18n="lbl_gen_key">Clave Generada</span> (<span id="planLabel" class="text-info"></span>):</strong> <code id="generatedKey" class="text-warning"></code>
+                            <div class="p-3 rounded d-flex justify-content-between align-items-center" style="background-color: #0b0f19; border: 1px solid #3b82f6;">
+                                <div>
+                                    <span class="text-light small d-block mb-1"><span data-i18n="lbl_gen_key">Clave Generada</span> (<strong id="planLabel" class="text-info"></strong>):</span>
+                                    <code id="generatedKey" class="fs-5 fw-bold" style="color: #38bdf8; letter-spacing: 0.5px;"></code>
+                                </div>
+                                <button onclick="copyGeneratedKey()" class="btn btn-primary btn-sm" id="btnCopyKey">
+                                    <i class="fa-regular fa-copy me-1"></i> <span data-i18n="btn_copy">Copiar</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -526,6 +531,7 @@ async def home_dashboard():
                     btn_free: "Plan Free (20 req/min)",
                     btn_pro: "Plan Pro / Enterprise (100 req/min)",
                     lbl_gen_key: "Clave Generada",
+                    btn_copy: "Copiar",
                     card_webhooks_title: "Registro y Prueba de Webhooks",
                     btn_register_wh: "Registrar Webhook",
                     th_wh_id: "ID Webhook",
@@ -564,6 +570,7 @@ async def home_dashboard():
                     btn_free: "Free Plan (20 req/min)",
                     btn_pro: "Pro / Enterprise Plan (100 req/min)",
                     lbl_gen_key: "Generated Key",
+                    btn_copy: "Copy",
                     card_webhooks_title: "Webhook Registration & Testing",
                     btn_register_wh: "Register Webhook",
                     th_wh_id: "Webhook ID",
@@ -614,6 +621,18 @@ async def home_dashboard():
                 }} catch (e) {{
                     alert('Error generando la clave comercial / Error generating commercial key.');
                 }}
+            }}
+
+            function copyGeneratedKey() {{
+                const keyText = document.getElementById('generatedKey').innerText;
+                navigator.clipboard.writeText(keyText);
+                const btn = document.getElementById('btnCopyKey');
+                btn.innerHTML = '<i class="fa-solid fa-check me-1"></i> ¡Copiada!';
+                btn.classList.replace('btn-primary', 'btn-success');
+                setTimeout(() => {{
+                    btn.innerHTML = '<i class="fa-regular fa-copy me-1"></i> Copiar';
+                    btn.classList.replace('btn-success', 'btn-primary');
+                }}, 2000);
             }}
 
             async function registerWebhook() {{
