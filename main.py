@@ -131,7 +131,6 @@ async def health_check():
         "version": API_VERSION,
         "uptime_seconds": uptime_seconds,
         "cache_active": bool(CACHE_STORAGE["data"]),
-        "webhooks_registered": len(REGISTERED_WEBHOOKS),
         "audit_logs_retained": len(AUDIT_LOGS),
         "timestamp": datetime.now().isoformat(),
         "legal_notice": "Servicio operando bajo la Ley 37/2007 / Operating under Law 37/2007."
@@ -151,41 +150,8 @@ async def request_api_key(payload: dict = None):
         "status": "success",
         "api_key": new_key,
         "tier": plan_requested.upper(),
-        "message": f"Clave Enterprise v{API_VERSION} emitida bajo el plan {plan_requested.upper()}. / Key issued under {plan_requested.upper()} tier.",
+        "message": f"Clave Enterprise v{API_VERSION} emitida bajo el plan {plan_requested.upper()}.",
         "legal_notice": "Ley 37/2007."
-    }
-
-@app.post("/webhooks/register")
-async def register_webhook(payload: dict):
-    webhook_url = payload.get("url")
-    if not webhook_url or not webhook_url.startswith("http"):
-        raise HTTPException(status_code=400, detail="URL de webhook inválida. Debe comenzar por http:// o https://")
-    
-    hook_id = f"wh_{uuid.uuid4().hex[:8]}"
-    REGISTERED_WEBHOOKS.append({
-        "id": hook_id,
-        "url": webhook_url,
-        "registered_at": datetime.now().isoformat()
-    })
-    return {
-        "status": "success",
-        "webhook_id": hook_id,
-        "message": "Webhook registrado correctamente. / Webhook successfully registered."
-    }
-
-@app.post("/webhooks/test", dependencies=[Depends(verify_api_key)])
-async def test_webhook(payload: dict):
-    if not REGISTERED_WEBHOOKS:
-        return {"status": "warning", "message": "No hay webhooks registrados. / No registered webhooks found."}
-    
-    results = []
-    for wh in REGISTERED_WEBHOOKS:
-        results.append({"webhook_id": wh["id"], "url": wh["url"], "delivery_status": "simulated_success"})
-            
-    return {
-        "status": "success",
-        "dispatched_count": len(results),
-        "details": results
     }
 
 @app.get("/analytics/summary", dependencies=[Depends(verify_api_key)])
@@ -253,19 +219,15 @@ async def home_dashboard():
         for log in AUDIT_LOGS[:25]
     ])
     if not logs_html:
-        logs_html = "<tr id='noLogsRow'><td colspan='3' class='text-muted text-center'>No hay registros recientes / No recent logs.</td></tr>"
+        logs_html = "<tr id='noLogsRow'><td colspan='3' class='text-muted text-center'>Sin actividad reciente / No recent activity.</td></tr>"
 
-    metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} peticiones / reqs</span></td></tr>" for k, v in API_KEY_METRICS.items()])
+    metrics_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-info text-dark'>{v} reqs</span></td></tr>" for k, v in API_KEY_METRICS.items()])
     if not metrics_html:
-        metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo registrado / No consumption.</td></tr>"
+        metrics_html = "<tr><td colspan='2' class='text-muted text-center'>Sin consumo / No consumption.</td></tr>"
 
     traffic_html = "".join([f"<tr><td><code>{k}</code></td><td><span class='badge bg-secondary'>{v} reqs</span></td></tr>" for k, v in HOURLY_TRAFFIC.items()])
     if not traffic_html:
         traffic_html = "<tr><td colspan='2' class='text-muted text-center'>Sin tráfico / No traffic.</td></tr>"
-
-    webhooks_html = "".join([f"<tr><td><code>{w['id']}</code></td><td><small class='text-light'>{w['url']}</small></td><td>{w['registered_at']}</td></tr>" for w in REGISTERED_WEBHOOKS])
-    if not webhooks_html:
-        webhooks_html = "<tr><td colspan='3' class='text-muted text-center'>Sin webhooks / No webhooks.</td></tr>"
 
     return f"""
     <!DOCTYPE html>
@@ -322,7 +284,6 @@ async def home_dashboard():
             }}
             table {{ color: var(--text-main) !important; }}
             .text-muted {{ color: #cbd5e1 !important; }}
-            input::placeholder {{ color: #9ca3af !important; opacity: 1; }}
         </style>
     </head>
     <body>
@@ -332,11 +293,11 @@ async def home_dashboard():
                 <div class="col-md-2 d-none d-md-block sidebar py-4">
                     <h5 class="px-3 text-white fw-bold mb-4"><i class="fa-solid fa-cube text-primary me-2"></i>PLACSP SaaS</h5>
                     <ul class="nav flex-column">
-                        <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i><span data-i18n="nav_dashboard">Dashboard</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i><span data-i18n="nav_swagger">Consola Swagger</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i><span data-i18n="nav_health">Health Check</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i><span data-i18n="nav_legal">Aviso Legal</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="/terms"><i class="fa-solid fa-file-contract me-2"></i><span data-i18n="nav_terms">Términos y Condiciones</span></a></li>
+                        <li class="nav-item"><a class="nav-link active" href="#"><i class="fa-solid fa-chart-line me-2"></i>Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/docs"><i class="fa-solid fa-code me-2"></i>Consola Swagger</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/health" target="_blank"><i class="fa-solid fa-heart-pulse me-2"></i>Health Check</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/legal"><i class="fa-solid fa-scale-balanced me-2"></i>Aviso Legal</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/terms"><i class="fa-solid fa-file-contract me-2"></i>Términos y Condiciones</a></li>
                     </ul>
                 </div>
 
@@ -344,54 +305,264 @@ async def home_dashboard():
                 <div class="col-md-10 p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
                         <div>
-                            <h3 class="fw-bold m-0"><span data-i18n="title_main">Panel Enterprise SaaS v</span>{API_VERSION}</h3>
-                            <p class="text-muted m-0 small" data-i18n="subtitle_main">Infraestructura oficial de datos con pasarela de integración PLACSP activa</p>
+                            <h3 class="fw-bold m-0">Panel Enterprise SaaS v{API_VERSION}</h3>
+                            <p class="text-muted m-0 small">Infraestructura oficial de datos con pasarela de integración PLACSP activa</p>
                         </div>
                         <div class="d-flex align-items-center">
-                            <!-- Lang Switcher (Español por defecto) -->
-                            <div class="btn-group btn-group-sm me-3">
-                                <button onclick="setLanguage('es')" class="btn btn-outline-light active" id="btnEs">ES</button>
-                                <button onclick="setLanguage('en')" class="btn btn-outline-light" id="btnEn">EN</button>
-                            </div>
-                            <span class="badge-status me-2"><i class="fa-solid fa-circle me-1 small"></i> <span data-i18n="badge_prod">PRODUCCIÓN v</span>{API_VERSION}</span>
-                            <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> <span data-i18n="btn_docs">Documentación API</span></a>
+                            <span class="badge-status me-3"><i class="fa-solid fa-circle me-1 small"></i> PRODUCCIÓN v{API_VERSION}</span>
+                            <a href="/docs" class="btn btn-primary btn-sm"><i class="fa-solid fa-book me-1"></i> Documentación API</a>
                         </div>
                     </div>
 
-                    <!-- Metrics Section -->
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-3">
-                            <div class="card-custom">
-                                <span class="text-muted small" data-i18n="card_status_lbl">Estado del Sistema</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-success"><i class="fa-solid fa-circle-check me-2"></i><span data-i18n="card_status_val">Enterprise Ready</span></h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card-custom">
-                                <span class="text-muted small" data-i18n="card_arch_lbl">Arquitectura</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">v{API_VERSION} Release Candidate</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card-custom">
-                                <span class="text-muted small" data-i18n="card_source_lbl">Origen de Datos</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-info">PLACSP + Fallback</h4>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card-custom">
-                                <span class="text-muted small" data-i18n="card_legal_lbl">Conformidad Legal</span>
-                                <h4 class="fw-bold mt-2 mb-0 text-warning">Ley 37/2007</h4>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Paso 1: Commercial Plan Request Card -->
+                    <!-- Onboarding Card (Generación de Clave Directa) -->
                     <div class="card-custom mb-4" style="border-left: 4px solid #3b82f6;">
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2 text-primary"></i><span data-i18n="step1_title">Paso 1: Generar tu Clave de API</span></h5>
+                            <h5 class="fw-bold m-0"><i class="fa-solid fa-key me-2 text-primary"></i>Generador Instantáneo de Clave API</h5>
                         </div>
-                        <p class="text-muted small mb-3" data-i18n="step1_desc">Selecciona tu plan comercial para emitir una clave de acceso instantánea:</p>
+                        <p class="text-muted small mb-3">Obtén tu clave de acceso en un solo clic y pruébala de inmediato en la consola:</p>
                         <div class="mb-3">
-                            <button onclick="generateKey('free')" class="btn btn-outline-secondary btn-sm me-2"><i class="fa-solid fa-user me-1"></i> <span data-i18n="btn_free">Plan Free (20 req/min)</span></button>
-                            <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> <span data-i18n="btn_pro">Plan Pro / Enterprise (100 req/min)
+                            <button onclick="generateKey('free')" class="btn btn-outline-secondary btn-sm me-2"><i class="fa-solid fa-user me-1"></i> Plan Free (20 req/min)</button>
+                            <button onclick="generateKey('pro')" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-briefcase me-1"></i> Plan Pro / Enterprise (100 req/min)</button>
+                        </div>
+                        <div id="keyDisplay" class="mt-3" style="display:none;">
+                            <div class="p-3 rounded d-flex justify-content-between align-items-center" style="background-color: #0b0f19; border: 1px solid #3b82f6;">
+                                <div style="overflow: hidden; padding-right: 15px;">
+                                    <span class="text-light small d-block mb-1">Clave Generada (<strong id="planLabel" class="text-info"></strong>):</span>
+                                    <code id="generatedKey" class="fs-6 fw-bold text-warning text-break" style="letter-spacing: 0.5px;"></code>
+                                    <small class="text-muted d-block mt-1">Copia esta clave y utilízala en la cabecera <code>X-API-KEY</code> de la Consola Swagger.</small>
+                                </div>
+                                <div class="d-flex gap-2 flex-shrink-0">
+                                    <button onclick="copyGeneratedKey()" class="btn btn-primary btn-sm" id="btnCopyKey">
+                                        <i class="fa-regular fa-copy me-1"></i> Copiar
+                                    </button>
+                                    <a href="/docs" class="btn btn-success btn-sm">
+                                        <i class="fa-solid fa-arrow-right me-1"></i> Ir a Swagger
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metrics & Usage Summary Cards -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="card-custom h-100">
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Consumo por Clave</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Clave</th>
+                                                <th>Reqs</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {metrics_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card-custom h-100">
+                                <h5 class="fw-bold mb-3"><i class="fa-solid fa-clock me-2"></i>Tráfico por Hora</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Franja</th>
+                                                <th>Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {traffic_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card-custom h-100">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 class="fw-bold m-0 fs-6"><i class="fa-solid fa-list-check me-1"></i>Auditoría</h5>
+                                    <div class="btn-group btn-group-sm" style="transform: scale(0.85);">
+                                        <button onclick="filterLogs('ALL')" class="btn btn-outline-light active">Todo</button>
+                                        <button onclick="filterLogs('SUCCESS')" class="btn btn-outline-success">OK</button>
+                                        <button onclick="filterLogs('DANGER')" class="btn btn-outline-danger">Err</button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped table-sm align-middle" id="auditTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Hora</th>
+                                                <th>Clave</th>
+                                                <th>Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {logs_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer Informativo -->
+                    <div class="text-center mt-5 pt-3 border-top border-secondary">
+                        <small class="text-muted">
+                            Este sitio utiliza únicamente cookies técnicas esenciales. Consulta nuestra 
+                            <a href="/terms" class="text-info text-decoration-none">Política de Cookies y Términos del Servicio</a>.
+                        </small>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <script>
+            async function generateKey(tier) {{
+                try {{
+                    const res = await fetch('/request-key', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ tier: tier }})
+                    }});
+                    const data = await res.json();
+                    if (data.api_key) {{
+                        document.getElementById('generatedKey').innerText = data.api_key;
+                        document.getElementById('planLabel').innerText = data.tier;
+                        document.getElementById('keyDisplay').style.display = 'block';
+                    }}
+                }} catch (e) {{
+                    alert('Error generando la clave comercial.');
+                }}
+            }}
+
+            function copyGeneratedKey() {{
+                const keyText = document.getElementById('generatedKey').innerText;
+                navigator.clipboard.writeText(keyText);
+                const btn = document.getElementById('btnCopyKey');
+                btn.innerHTML = '<i class="fa-solid fa-check me-1"></i> ¡Copiada!';
+                btn.classList.replace('btn-primary', 'btn-success');
+                setTimeout(() => {{
+                    btn.innerHTML = '<i class="fa-regular fa-copy me-1"></i> Copiar';
+                    btn.classList.replace('btn-success', 'btn-primary');
+                }}, 2000);
+            }}
+
+            function filterLogs(severity) {{
+                const buttons = document.querySelectorAll('.card-custom .btn-group button');
+                buttons.forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+
+                const rows = document.querySelectorAll('#auditTable tbody tr');
+                rows.forEach(row => {{
+                    if (row.id === 'noLogsRow') return;
+                    const rowSev = row.getAttribute('data-severity');
+                    if (severity === 'ALL' || rowSev === severity) {{
+                        row.style.display = '';
+                    }} else {{
+                        row.style.display = 'none';
+                    }}
+                }});
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+@app.get("/legal", response_class=HTMLResponse, include_in_schema=False)
+async def legal_notice():
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Aviso Legal - API PLACSP SaaS v{API_VERSION}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body style="background-color: #0b0f19; color: #f3f4f6; font-family: 'Segoe UI', sans-serif; padding: 40px;">
+        <div class="container" style="max-width: 800px;">
+            <h1 class="fw-bold mb-4">Aviso Legal y Limitación de Responsabilidad (v{API_VERSION})</h1>
+            <hr class="border-secondary my-4">
+            <p>Este servicio opera bajo el amparo de la <strong>Ley 37/2007</strong> sobre reutilización de la información del sector público.</p>
+            <p>El proveedor de esta API actúa como mero agregador tecnológico y de índice, no otorga derechos de propiedad intelectual, no garantiza la inalterabilidad o exactitud de los datos originales institucionales (PLACSP), y queda totalmente exento de responsabilidad por interrupciones del servicio derivadas de fallos en los servidores públicos oficiales.</p>
+            <div class="mt-5"><a href="/" class="btn btn-outline-primary btn-sm">&larr; Volver al Dashboard</a></div>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+async def terms_and_conditions():
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Términos y Condiciones - API PLACSP SaaS v{API_VERSION}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body style="background-color: #0b0f19; color: #f3f4f6; font-family: 'Segoe UI', sans-serif; padding: 40px;">
+        <div class="container" style="max-width: 800px;">
+            <h1 class="fw-bold mb-4">Términos y Condiciones del Servicio (v{API_VERSION})</h1>
+            <p class="text-muted">Última actualización: Noviembre de 2026</p>
+            <hr class="border-secondary my-4">
+            <h5 class="text-info mt-4">1. Naturaleza del Servicio y Fuente de Datos</h5>
+            <p>El servicio consiste en una pasarela tecnológica de agregación, filtrado y optimización de datos públicos obtenidos de la PLACSP, operando bajo la <strong>Ley 37/2007</strong>.</p>
+            <h5 class="text-info mt-4">2. Disponibilidad y Mantenimiento ("Garantía Anti-Rupturas")</h5>
+            <p>Destinaremos nuestros mejores esfuerzos técnicos (<em>Best Efforts</em>) a mantener la continuidad del servicio.</p>
+            <h5 class="text-info mt-4">3. Limitación de Responsabilidad (Cap of Liability)</h5>
+            <p>La responsabilidad máxima total frente al Cliente estará estrictamente limitada a la cantidad abonada por el Cliente en concepto de suscripción durante el último mes en curso.</p>
+            <div class="mt-5"><a href="/" class="btn btn-outline-primary btn-sm">&larr; Volver al Dashboard</a></div>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.get("/tenders", dependencies=[Depends(verify_api_key)])
+async def get_tenders(
+    request: Request, 
+    estado: str = Query(None, description="Filtrar por estado / Filter by status"),
+    formato: str = Query("json", description="Formato: json o csv / Format: json or csv"),
+    limit: int = Query(10, ge=1, le=100, description="Límite / Limit per page"),
+    offset: int = Query(0, ge=0, description="Desplazamiento / Pagination offset")
+):
+    global CACHE_STORAGE
+    now = time.time()
+
+    if not CACHE_STORAGE["data"] or (now - CACHE_STORAGE["timestamp"]) > CACHE_TTL:
+        CACHE_STORAGE["data"] = fetch_real_placsp_tenders()
+        CACHE_STORAGE["timestamp"] = now
+
+    tenders_data = CACHE_STORAGE["data"]
+
+    filtered_data = tenders_data
+    if estado:
+        filtered_data = [t for t in tenders_data if t["estado"].lower() == estado.lower()]
+
+    paginated_data = filtered_data[offset: offset + limit]
+
+    if formato.lower() == "csv":
+        csv_rows = ["id,objeto,organo_contratacion,estado,fecha_publicacion"]
+        for t in paginated_data:
+            csv_rows.append(f"{t['id']},\"{t['objeto']}\",\"{t['organo_contratacion']}\",{t['estado']},{t['fecha_publicacion']}")
+        csv_text = "\n".join(csv_rows)
+        return PlainTextResponse(content=csv_text, media_type="text/csv")
+
+    return {
+        "status": "success",
+        "version": API_VERSION,
+        "cache_status": "hit",
+        "legal_notice": "Ley 37/2007.",
+        "pagination": {
+            "total_matches": len(filtered_data),
+            "limit": limit,
+            "offset": offset
+        },
+        "data": paginated_data
+    }
