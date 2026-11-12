@@ -158,8 +158,8 @@ async def request_api_key(payload: dict = None):
 @app.post("/webhooks/register")
 async def register_webhook(payload: dict):
     webhook_url = payload.get("url")
-    if not webhook_url:
-        raise HTTPException(status_code=400, detail="La URL del webhook es obligatoria. / Webhook URL is mandatory.")
+    if not webhook_url or not webhook_url.startswith("http"):
+        raise HTTPException(status_code=400, detail="URL de webhook inválida. Debe comenzar por http:// o https://")
     
     hook_id = f"wh_{uuid.uuid4().hex[:8]}"
     REGISTERED_WEBHOOKS.append({
@@ -322,6 +322,7 @@ async def home_dashboard():
             }}
             table {{ color: var(--text-main) !important; }}
             .text-muted {{ color: #cbd5e1 !important; }}
+            input::placeholder {{ color: #9ca3af !important; opacity: 1; }}
         </style>
     </head>
     <body>
@@ -412,7 +413,7 @@ async def home_dashboard():
                     <div class="card-custom mb-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-bell me-2"></i><span data-i18n="card_webhooks_title">Registro y Prueba de Webhooks</span></h5>
                         <div class="input-group mb-3" style="max-width: 600px;">
-                            <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook-endpoint">
+                            <input type="text" id="webhookUrlInput" class="form-control bg-dark text-light border-secondary" placeholder="https://tu-servidor.com/webhook-endpoint" style="color: #f3f4f6 !important;">
                             <button onclick="registerWebhook()" class="btn btn-outline-primary" data-i18n="btn_register_wh">Registrar Webhook</button>
                         </div>
                         <div class="table-responsive mt-3">
@@ -636,9 +637,9 @@ async def home_dashboard():
             }}
 
             async function registerWebhook() {{
-                const url = document.getElementById('webhookUrlInput').value;
-                if (!url) {{
-                    alert('Por favor introduce una URL válida / Please enter a valid URL.');
+                const url = document.getElementById('webhookUrlInput').value.trim();
+                if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {{
+                    alert('Introduce una URL válida de webhook (debe empezar por http:// o https://)');
                     return;
                 }}
                 try {{
@@ -649,13 +650,13 @@ async def home_dashboard():
                     }});
                     const data = await res.json();
                     if (data.status === 'success') {{
-                        alert('Webhook registrado con éxito / Webhook registered successfully.');
+                        alert('Webhook registrado con éxito.');
                         location.reload();
                     }} else {{
-                        alert('Error al registrar el webhook / Error registering webhook.');
+                        alert('Error al registrar el webhook.');
                     }}
                 }} catch (e) {{
-                    alert('Error de red / Network error.');
+                    alert('Error de red al registrar el webhook.');
                 }}
             }}
 
